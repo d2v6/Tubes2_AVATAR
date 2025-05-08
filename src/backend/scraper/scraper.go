@@ -12,12 +12,10 @@ import (
 	"github.com/gocolly/colly/v2"
 )
 
-// Recipe represents a combination of ingredients to create an element
 type Recipe struct {
 	Ingredients []string `json:"ingredients"`
 }
 
-// Element represents a Little Alchemy 2 element and its recipes
 type Element struct {
 	Name    string   `json:"name"`
 	Tier    int      `json:"tier"`
@@ -31,20 +29,16 @@ func main() {
 		colly.AllowURLRevisit(),
 	)
 
-	// Create a slice to store all elements
 	var elements []Element
 
-	// Use a map to track the tier for each section
 	sectionTiers := make(map[string]int)
 
-	// First pass: Collect all section tiers
 	sectionCollector := c.Clone()
 	sectionCollector.OnHTML("h3 .mw-headline", func(e *colly.HTMLElement) {
 		sectionTitle := e.Text
-		sectionID := e.Attr("id") // Get the section ID
+		sectionID := e.Attr("id") 
 		fmt.Println("Found section:", sectionTitle, "with ID:", sectionID)
 
-		// Set tier based on section title
 		var tier int
 		switch sectionTitle {
 		case "Starting elements":
@@ -55,17 +49,16 @@ func main() {
 			if sectionTitle != "" {
 				rawSectionTitle := strings.Split(sectionTitle, " ")
 				if len(rawSectionTitle) == 3 {
-					// Extract the tier number from the section title
 					tierStr := rawSectionTitle[1]
 					if t, err := strconv.Atoi(tierStr); err == nil {
 						tier = t
 					} else {
 						fmt.Println("Error converting tier string to int:", err)
-						tier = 999 // Default high value for unknown
+						tier = 999 
 					}
 				} else {
 					fmt.Println("Unexpected section title format:", sectionTitle)
-					tier = 999 // Default high value for unknown
+					tier = 999 
 				}
 			}
 		}
