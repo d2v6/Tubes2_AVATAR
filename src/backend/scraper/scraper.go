@@ -152,7 +152,7 @@ func main() {
 	}
 
 	// Write to a file
-	if err := os.WriteFile("elements.json", jsonData, 0644); err != nil {
+	if err := os.WriteFile("../data/elements.json", jsonData, 0644); err != nil {
 		log.Fatal("Error writing JSON to file:", err)
 	}
 
