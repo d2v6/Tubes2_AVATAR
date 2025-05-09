@@ -278,17 +278,54 @@ func TreeKey(tree *TreeNode) string {
 	return fmt.Sprintf("%s(%s,%s)", tree.Element, left, right)
 }
 
-func PrintRecipeTree(tree *TreeNode, indent string) {
+func PrintRecipeTree(tree *TreeNode) {
 	if tree == nil {
 		return
 	}
-	if tree.Recipe != nil {
-		fmt.Printf("%s%s = %s + %s\n", indent, tree.Element, tree.Recipe[0], tree.Recipe[1])
-	} else {
-		fmt.Printf("%s%s\n", indent, tree.Element)
+
+	type StackFrame struct {
+		Node   *TreeNode
+		Prefix string // accumulated prefix (e.g. "│   ")
+		IsLast bool   // whether this node is the last child
 	}
-	for _, child := range tree.Ingredients {
-		PrintRecipeTree(child, indent+"  ")
+
+	stack := []StackFrame{{Node: tree, Prefix: "", IsLast: true}}
+
+	for len(stack) > 0 {
+		// Pop from the back for correct DFS order
+		frame := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		node := frame.Node
+		connector := "├── "
+		if frame.IsLast {
+			connector = "└── "
+		}
+		fmt.Printf("%s%s", frame.Prefix, connector)
+		if node.Recipe != nil {
+			fmt.Printf("%s = %s + %s\n", node.Element, node.Recipe[0], node.Recipe[1])
+		} else {
+			fmt.Printf("%s\n", node.Element)
+		}
+
+		// Prepare next children in reverse order (so first shows on top)
+		if len(node.Ingredients) > 0 {
+			newPrefix := frame.Prefix
+			if frame.IsLast {
+				newPrefix += "    "
+			} else {
+				newPrefix += "│   "
+			}
+			for i := len(node.Ingredients) - 1; i >= 0; i-- {
+				child := node.Ingredients[i]
+				isLast := i == len(node.Ingredients)-1
+				stack = append(stack, StackFrame{
+					Node:   child,
+					Prefix: newPrefix,
+					IsLast: isLast,
+				})
+			}
+		}
 	}
 }
 

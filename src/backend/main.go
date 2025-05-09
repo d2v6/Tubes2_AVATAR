@@ -40,7 +40,7 @@ func main() {
 	bfsResults := ElementsController.FindNRecipesForElementBFS(targetNode, 3)
 	for i, tree := range bfsResults {
 		fmt.Printf("\nBFS Tree %d:\n", i+1)
-		ElementsController.PrintRecipeTree(tree, "")
+		ElementsController.PrintRecipeTree(tree)
 	}
 
 	// DFS
@@ -48,6 +48,6 @@ func main() {
 	dfsResults := ElementsController.FindNRecipesForElementDFS(targetNode, 3)
 	for i, tree := range dfsResults {
 		fmt.Printf("\nDFS Tree %d:\n", i+1)
-		ElementsController.PrintRecipeTree(tree, "")
+		ElementsController.PrintRecipeTree(tree)
 	}
 }
