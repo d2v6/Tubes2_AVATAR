@@ -1,7 +1,7 @@
-package ElementsController
+package elementsController
 
 import (
-	ElementsModel "backend/models"
+	elementsModel "backend/models"
 	"fmt"
 )
 
@@ -15,7 +15,7 @@ type TreeNode struct {
 }
 
 func NewElementController(filePath string) (*ElementController, error) {
-	err := ElementsModel.GetInstance().Initialize(filePath)
+	err := elementsModel.GetInstance().Initialize(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +23,7 @@ func NewElementController(filePath string) (*ElementController, error) {
 }
 
 func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool) ([]*TreeNode, error) {
-	node, err := ElementsModel.GetInstance().GetElementNode(targetName)
+	node, err := elementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
 		return nil, err
 	}
@@ -34,11 +34,11 @@ func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool)
 	}
 }
 
-func FindNRecipesForElementDFS(target *ElementsModel.ElementNode, maxCount int) []*TreeNode {
+func FindNRecipesForElementDFS(target *elementsModel.ElementNode, maxCount int) []*TreeNode {
 	type Frame struct {
 		Tree     *TreeNode
-		Node     *ElementsModel.ElementNode
-		Relation *ElementsModel.ElementRelation
+		Node     *elementsModel.ElementNode
+		Relation *elementsModel.ElementRelation
 		ChildIdx int
 	}
 
@@ -164,7 +164,7 @@ func isTreeComplete(tree *TreeNode) bool {
 	return true
 }
 
-func FindNRecipesForElementBFS(target *ElementsModel.ElementNode, maxCount int) []*TreeNode {
+func FindNRecipesForElementBFS(target *elementsModel.ElementNode, maxCount int) []*TreeNode {
 	type Frame struct {
 		Tree *TreeNode
 	}
@@ -210,7 +210,7 @@ func FindNRecipesForElementBFS(target *ElementsModel.ElementNode, maxCount int) 
 
 			for i := 0; i < 2; i++ {
 				child := curr.Ingredients[i]
-				childNode, err := ElementsModel.GetInstance().GetElementNode(child.Element)
+				childNode, err := elementsModel.GetInstance().GetElementNode(child.Element)
 				if err != nil || childNode == nil {
 					complete = false
 					continue
@@ -329,9 +329,9 @@ func PrintRecipeTree(tree *TreeNode) {
 	}
 }
 
-// func FindNRecipesForElementDFS(target *ElementsModel.ElementNode) []*TreeNode {
+// func FindNRecipesForElementDFS(target *elementsModel.ElementNode) []*TreeNode {
 // 	type StackState struct {
-// 		Node   *ElementsModel.ElementNode
+// 		Node   *elementsModel.ElementNode
 // 		Tree   *TreeNode
 // 		Parent *TreeNode
 // 	}
@@ -376,9 +376,9 @@ func PrintRecipeTree(tree *TreeNode) {
 // 	return finalResults
 // }
 
-// func FindNRecipesForElementBFS(target *ElementsModel.ElementNode) []*TreeNode {
+// func FindNRecipesForElementBFS(target *elementsModel.ElementNode) []*TreeNode {
 // 	type QueueState struct {
-// 		Node   *ElementsModel.ElementNode
+// 		Node   *elementsModel.ElementNode
 // 		Tree   *TreeNode
 // 		Parent *TreeNode
 // 	}
@@ -463,7 +463,7 @@ func PrintRecipeTree(tree *TreeNode) {
 // }
 
 // func (ec *ElementController) FindPathToElement(targetName string) (*ElementPath, error) {
-// 	elementsService := ElementsModel.GetInstance()
+// 	elementsService := elementsModel.GetInstance()
 
 // 	targetNode, err := elementsService.GetElementNode(targetName)
 // 	if err != nil {
@@ -485,7 +485,7 @@ func PrintRecipeTree(tree *TreeNode) {
 // 	return path, nil
 // }
 
-// func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error) {
+// func findOptimalPath(targetNode *elementsModel.ElementNode) (*ElementPath, error) {
 // 	path := &ElementPath{
 // 		TargetElement: targetNode.Element.Name,
 // 		Steps:         []RecipeStep{},
@@ -493,7 +493,7 @@ func PrintRecipeTree(tree *TreeNode) {
 
 // 	processedElements := make(map[string]bool)
 
-// 	queue := []*ElementsModel.ElementNode{targetNode}
+// 	queue := []*elementsModel.ElementNode{targetNode}
 
 // 	elementToStep := make(map[string]RecipeStep)
 
@@ -513,7 +513,7 @@ func PrintRecipeTree(tree *TreeNode) {
 // 			continue
 // 		}
 
-// 		var bestRelation *ElementsModel.ElementRelation
+// 		var bestRelation *elementsModel.ElementRelation
 // 		lowestTierSum := 9999999
 
 // 		for _, relation := range currentNode.Parents {

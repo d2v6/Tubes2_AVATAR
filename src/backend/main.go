@@ -1,53 +1,26 @@
 package main
 
 import (
-	ElementsController "backend/controllers"
-	ElementsModel "backend/models"
-	Scraper "backend/scraper"
-	"fmt"
+	elementsModel "backend/models"
+	"backend/routes"
+	"backend/scraper"
+	"log"
+	"net/http"
 )
 
 func main() {
 	filePath := "data/elements.json"
 
-	fmt.Println("Scraping data...")
-	Scraper.Scrape(filePath)
+	log.Println("Scraping data...")
+	scraper.Scrape(filePath)
 
-	elementsService := ElementsModel.GetInstance()
-	err := elementsService.Initialize(filePath)
+	log.Println("Initializing elements model...")
+	err := elementsModel.GetInstance().Initialize(filePath)
 	if err != nil {
-		fmt.Println("Error initializing elements service:", err)
-		return
+		log.Fatalf("Error initializing elements service: %v", err)
 	}
 
-	_, err = ElementsController.NewElementController(filePath)
-	if err != nil {
-		fmt.Println("Error creating controller:", err)
-		return
-	}
-
-	targetElement := "Rock"
-	fmt.Printf("\n=== Example: Finding multiple recipe trees for %s ===\n", targetElement)
-
-	targetNode, err := elementsService.GetElementNode(targetElement)
-	if err != nil {
-		fmt.Println("Error getting element node:", err)
-		return
-	}
-
-	// BFS
-	fmt.Println("\n-- BFS Trees --")
-	bfsResults := ElementsController.FindNRecipesForElementBFS(targetNode, 3)
-	for i, tree := range bfsResults {
-		fmt.Printf("\nBFS Tree %d:\n", i+1)
-		ElementsController.PrintRecipeTree(tree)
-	}
-
-	// DFS
-	fmt.Println("\n-- DFS Trees --")
-	dfsResults := ElementsController.FindNRecipesForElementDFS(targetNode, 3)
-	for i, tree := range dfsResults {
-		fmt.Printf("\nDFS Tree %d:\n", i+1)
-		ElementsController.PrintRecipeTree(tree)
-	}
+	log.Println("Starting server on http://localhost:8080")
+	router := routes.InitRoutes()
+	log.Fatal(http.ListenAndServe(":8080", router))
 }
