@@ -36,7 +36,6 @@ func Scrape(filePath string) {
     sectionCollector.OnHTML("h3 .mw-headline", func(e *colly.HTMLElement) {
         sectionTitle := e.Text
         sectionID := e.Attr("id")
-        fmt.Println("Found section:", sectionTitle, "with ID:", sectionID)
 
         var tier int
         switch sectionTitle {
@@ -61,7 +60,6 @@ func Scrape(filePath string) {
         }
 
         sectionTiers[sectionID] = tier
-        fmt.Printf("Section %s (ID: %s) set to tier: %d\n", sectionTitle, sectionID, tier)
     })
 
     if err := sectionCollector.Visit("https://little-alchemy.fandom.com/wiki/Elements_(Little_Alchemy_2)"); err != nil {

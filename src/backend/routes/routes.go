@@ -4,6 +4,7 @@ import (
 	elementsController "backend/controllers"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -21,29 +22,76 @@ func InitRoutes() http.Handler {
 		AllowCredentials: false,
 	}))
 
-	// Example: http://localhost:8080/api/path?target=Brick
-	r.Get("/api/path", func(w http.ResponseWriter, r *http.Request) {
-		target := r.URL.Query().Get("target")
-		if target == "" {
-			http.Error(w, "target parameter required", http.StatusBadRequest)
-			return
-		}
-
-		controller, err := elementsController.NewElementController("data/elements.json")
-		if err != nil {
-			http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
-			return
-		}
-
-		path, err := controller.FindPathToElement(target)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(path)
+	r.Route("/api", func(r chi.Router) {
+		r.Get("/path", handleFindSingleRecipe)
+		
+		r.Get("/recipes", handleFindMultipleRecipes)
 	})
 
 	return r
+}
+
+func handleFindSingleRecipe(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("target")
+	method := r.URL.Query().Get("method")
+	
+	if target == "" {
+		http.Error(w, "target parameter required", http.StatusBadRequest)
+		return
+	}
+
+	useBFS := method != "dfs"
+
+	controller, err := elementsController.NewElementController("data/elements.json")
+	if err != nil {
+		http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
+		return
+	}
+
+	recipes, err := controller.FindNRecipes(target, 1, useBFS)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(recipes) 
+}
+
+func handleFindMultipleRecipes(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("target")
+	method := r.URL.Query().Get("method")
+	countStr := r.URL.Query().Get("count")
+	
+	if target == "" {
+		http.Error(w, "target parameter required", http.StatusBadRequest)
+		return
+	}
+
+	useBFS := method != "dfs"
+	count := 1
+	
+	if countStr != "" {
+		parsedCount, err := strconv.Atoi(countStr)
+		if err != nil {
+			http.Error(w, "count parameter must be an integer", http.StatusBadRequest)
+			return
+		}
+		count = parsedCount
+	}
+
+	controller, err := elementsController.NewElementController("data/elements.json")
+	if err != nil {
+		http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
+		return
+	}
+
+	recipes, err := controller.FindNRecipes(target, count, useBFS)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(recipes)
 }
