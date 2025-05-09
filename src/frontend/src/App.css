@@ -1,42 +1,134 @@
-#root {
-  max-width: 1280px;
+.app {
+  max-width: 900px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 20px;
+  font-family: sans-serif;
+}
+
+.header {
+  margin-bottom: 30px;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  margin-bottom: 15px;
+}
+
+.tab-button {
+  padding: 8px 16px;
+  background-color: #eee;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.active-tab {
+  background-color: #4a6da7;
+  color: white;
+  border-color: #3a5d97;
+}
+
+.search-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.select {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.count-input {
+  width: 60px;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.button {
+  padding: 8px 16px;
+  background-color: #4a6da7;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.loading {
+  color: #666;
+  font-style: italic;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.error {
+  color: #d32f2f;
+  padding: 10px;
+  border-left: 4px solid #d32f2f;
+  background-color: #ffebee;
 }
 
-.card {
-  padding: 2em;
+.no-results {
+  padding: 20px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  text-align: center;
+  color: #666;
 }
 
-.read-the-docs {
-  color: #888;
+.recipes-container {
+  margin-top: 20px;
+}
+
+.recipe-tree {
+  margin-top: 20px;
+  margin-bottom: 30px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
+
+.tree-container {
+  margin-top: 20px;
+}
+
+.tree-node {
+  padding: 10px 0;
+  position: relative;
+}
+
+.tree-node-indented {
+  margin-left: 20px;
+}
+
+.element-info {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+}
+
+.element-name {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.recipe-formula {
+  margin-left: 5px;
+  color: #666;
+}
+
+.ingredients {
+  position: relative;
+  margin-top: 5px;
 }
