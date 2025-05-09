@@ -26,7 +26,7 @@ func main() {
 		return
 	}
 
-	targetElement := "Lake"
+	targetElement := "Rock"
 	fmt.Printf("\n=== Example: Finding multiple recipe trees for %s ===\n", targetElement)
 
 	targetNode, err := elementsService.GetElementNode(targetElement)
@@ -37,17 +37,17 @@ func main() {
 
 	// BFS
 	fmt.Println("\n-- BFS Trees --")
-	bfsResults := ElementsController.FindNRecipesForElementBFS(targetNode)
+	bfsResults := ElementsController.FindNRecipesForElementBFS(targetNode, 3)
 	for i, tree := range bfsResults {
 		fmt.Printf("\nBFS Tree %d:\n", i+1)
-		ElementsController.PrintTree(tree, "", true)
+		ElementsController.PrintRecipeTree(tree, "")
 	}
 
 	// DFS
 	fmt.Println("\n-- DFS Trees --")
-	dfsResults := ElementsController.FindNRecipesForElementDFS(targetNode)
+	dfsResults := ElementsController.FindNRecipesForElementDFS(targetNode, 3)
 	for i, tree := range dfsResults {
 		fmt.Printf("\nDFS Tree %d:\n", i+1)
-		ElementsController.PrintTree(tree, "", true)
+		ElementsController.PrintRecipeTree(tree, "")
 	}
 }
