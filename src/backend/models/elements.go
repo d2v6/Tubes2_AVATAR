@@ -1,4 +1,4 @@
-package ElementsModel
+package elementsModel
 
 import (
 	"encoding/json"

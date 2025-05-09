@@ -1,7 +1,7 @@
-package ElementsController
+package elementsController
 
 import (
-	ElementsModel "backend/models"
+	elementsModel "backend/models"
 	"errors"
 	"fmt"
 	"strings"
@@ -11,7 +11,7 @@ type ElementController struct {
 }
 
 func NewElementController(filePath string) (*ElementController, error) {
-	err := ElementsModel.GetInstance().Initialize(filePath)
+	err := elementsModel.GetInstance().Initialize(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +30,7 @@ type ElementPath struct {
 }
 
 func (ec *ElementController) FindPathToElement(targetName string) (*ElementPath, error) {
-	elementsService := ElementsModel.GetInstance()
+	elementsService := elementsModel.GetInstance()
 	
 	targetNode, err := elementsService.GetElementNode(targetName)
 	if err != nil {
@@ -52,7 +52,7 @@ func (ec *ElementController) FindPathToElement(targetName string) (*ElementPath,
 	return path, nil
 }
 
-func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error) {
+func findOptimalPath(targetNode *elementsModel.ElementNode) (*ElementPath, error) {
 	path := &ElementPath{
 		TargetElement: targetNode.Element.Name,
 		Steps:         []RecipeStep{},
@@ -60,7 +60,7 @@ func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error
 	
 	processedElements := make(map[string]bool)
 	
-	queue := []*ElementsModel.ElementNode{targetNode}
+	queue := []*elementsModel.ElementNode{targetNode}
 	
 	elementToStep := make(map[string]RecipeStep)
 	
@@ -80,7 +80,7 @@ func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error
 			continue
 		}
 		
-		var bestRelation *ElementsModel.ElementRelation
+		var bestRelation *elementsModel.ElementRelation
 		lowestTierSum := 9999999
 		
 		for _, relation := range currentNode.Parents {
