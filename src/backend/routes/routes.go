@@ -32,66 +32,78 @@ func InitRoutes() http.Handler {
 }
 
 func handleFindSingleRecipe(w http.ResponseWriter, r *http.Request) {
-	target := r.URL.Query().Get("target")
-	method := r.URL.Query().Get("method")
-	
-	if target == "" {
-		http.Error(w, "target parameter required", http.StatusBadRequest)
-		return
-	}
+    target := r.URL.Query().Get("target")
+    method := r.URL.Query().Get("method")
 
-	useBFS := method != "dfs"
+    if target == "" {
+        http.Error(w, "target parameter required", http.StatusBadRequest)
+        return
+    }
 
-	controller, err := elementsController.NewElementController("data/elements.json")
-	if err != nil {
-		http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
-		return
-	}
+    useBFS := method != "dfs"
 
-	recipes, err := controller.FindNRecipes(target, 1, useBFS)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    controller, err := elementsController.NewElementController("data/elements.json")
+    if err != nil {
+        http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
+        return
+    }
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(recipes) 
+    recipes, nodesVisited, duration, err := controller.FindNRecipes(target, 1, useBFS)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    response := map[string]interface{}{
+        "recipes":      recipes,
+        "nodesVisited": nodesVisited,
+        "duration":     duration.String(),
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
 }
 
 func handleFindMultipleRecipes(w http.ResponseWriter, r *http.Request) {
-	target := r.URL.Query().Get("target")
-	method := r.URL.Query().Get("method")
-	countStr := r.URL.Query().Get("count")
-	
-	if target == "" {
-		http.Error(w, "target parameter required", http.StatusBadRequest)
-		return
-	}
+    target := r.URL.Query().Get("target")
+    method := r.URL.Query().Get("method")
+    countStr := r.URL.Query().Get("count")
 
-	useBFS := method != "dfs"
-	count := 1
-	
-	if countStr != "" {
-		parsedCount, err := strconv.Atoi(countStr)
-		if err != nil {
-			http.Error(w, "count parameter must be an integer", http.StatusBadRequest)
-			return
-		}
-		count = parsedCount
-	}
+    if target == "" {
+        http.Error(w, "target parameter required", http.StatusBadRequest)
+        return
+    }
 
-	controller, err := elementsController.NewElementController("data/elements.json")
-	if err != nil {
-		http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
-		return
-	}
+    useBFS := method != "dfs"
+    count := 1
 
-	recipes, err := controller.FindNRecipes(target, count, useBFS)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+    if countStr != "" {
+        parsedCount, err := strconv.Atoi(countStr)
+        if err != nil {
+            http.Error(w, "count parameter must be an integer", http.StatusBadRequest)
+            return
+        }
+        count = parsedCount
+    }
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(recipes)
+    controller, err := elementsController.NewElementController("data/elements.json")
+    if err != nil {
+        http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
+        return
+    }
+
+    recipes, nodesVisited, duration, err := controller.FindNRecipes(target, count, useBFS)
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    response := map[string]interface{}{
+        "recipes":      recipes,
+        "nodesVisited": nodesVisited,
+        "duration":     duration.String(),
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
 }

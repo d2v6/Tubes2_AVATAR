@@ -26,6 +26,8 @@ function App() {
   const [method, setMethod] = useState("bfs");
   const [count, setCount] = useState(1);
   const [treeData, setTreeData] = useState<TreeGraphNode | null>(null);
+  const [nodesVisited, setNodesVisited] = useState<number | null>(null);
+  const [timeTaken, setTimeTaken] = useState<number | null>(null);
 
   const fetchRecipes = () => {
     setLoading(true);
@@ -41,7 +43,9 @@ function App() {
         return res.json();
       })
       .then((data) => {
-        setRecipeTree(data);
+        setRecipeTree(data.recipes);
+        setNodesVisited(data.nodesVisited);
+        setTimeTaken(parseFloat(data.duration) * 1000); // Convert seconds to milliseconds
         setLoading(false);
         console.log("Recipe tree data:", data);
       })
@@ -106,6 +110,10 @@ function App() {
         {!loading && recipeTree && treeData && (
           <div className="p-4">
             <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.element}</h2>
+            <div className="mb-4">
+              <p>Nodes Visited: {nodesVisited}</p>
+              <p>Time Taken: {timeTaken} ms</p>
+            </div>
             <div id="treeWrapper" className="overflow-auto border p-4" style={{ width: "100%", height: "600px" }}>
               <Tree data={treeData} height={500} width={1000} animated svgProps={{ className: "custom" }} />
             </div>

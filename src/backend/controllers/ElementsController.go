@@ -3,6 +3,8 @@ package elementsController
 import (
 	elementsModel "backend/models"
 	"fmt"
+	"sync"
+	"time"
 )
 
 type ElementController struct {
@@ -22,33 +24,37 @@ func NewElementController(filePath string) (*ElementController, error) {
 	return &ElementController{}, nil
 }
 
-func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool) (*TreeNode, error) {
-	node, err := elementsModel.GetInstance().GetElementNode(targetName)
-	if err != nil {
-		return nil, err
-	}
-	if useBFS {
-		return FindNRecipesForElementBFS(node, n), nil
-	} else {
-		return FindNRecipesForElementDFS(node, n), nil
-	}
-}
-
-func FindNRecipesForElementDFS(target *elementsModel.ElementNode, maxCount int) *TreeNode {
-    type Frame struct {
-        Tree     *TreeNode
-        Node     *elementsModel.ElementNode
-        Relation *elementsModel.ElementRelation
-        ChildIdx int
+func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool) (*TreeNode, int, time.Duration, error) {
+    node, err := elementsModel.GetInstance().GetElementNode(targetName)
+    if err != nil {
+        return nil, 0, 0, err
     }
 
+    start := time.Now()
+    var result *TreeNode
+    var nodesVisited int
+
+    if useBFS {
+        result, nodesVisited = FindNRecipesForElementBFS(node, n)
+    } else {
+        result, nodesVisited = FindNRecipesForElementDFS(node, n)
+    }
+
+    duration := time.Since(start)
+    return result, nodesVisited, duration, nil
+}
+
+func FindNRecipesForElementDFS(target *elementsModel.ElementNode, maxCount int) (*TreeNode, int) {
     var results []*TreeNode
-    seen := map[string]bool{}
-    stack := []Frame{}
+    seen := sync.Map{}
+    var mu sync.Mutex
+    var wg sync.WaitGroup
+    ch := make(chan *TreeNode, maxCount)
 
     rootName := target.Element.Name
+    nodesVisited := 0
+    var nodesVisitedMu sync.Mutex
 
-    // Initialize stack with all top-level recipes for the target
     for _, rel := range target.Parents {
         if len(rel.Recipe.Ingredients) != 2 {
             continue
@@ -58,77 +64,94 @@ func FindNRecipesForElementDFS(target *elementsModel.ElementNode, maxCount int) 
             Recipe:      rel.Recipe.Ingredients,
             Ingredients: make([]*TreeNode, 2),
         }
-        stack = append(stack, Frame{
-            Tree:     tree,
-            Node:     target,
-            Relation: rel,
-            ChildIdx: 0,
-        })
+        wg.Add(1)
+        go func(tree *TreeNode, rel *elementsModel.ElementRelation) {
+            defer wg.Done()
+            expandTreeDFS(tree, rootName, &seen, ch, &nodesVisited, &nodesVisitedMu)
+        }(tree, rel)
     }
 
-    for len(stack) > 0 && len(results) < maxCount {
-        frame := stack[len(stack)-1]
+    go func() {
+        wg.Wait()
+        close(ch)
+    }()
+
+    for tree := range ch {
+        mu.Lock()
+        results = append(results, tree)
+        if len(results) >= maxCount {
+            mu.Unlock()
+            break
+        }
+        mu.Unlock()
+    }
+
+    return MergeTrees(results), nodesVisited
+}
+
+func expandTreeDFS(tree *TreeNode, rootName string, seen *sync.Map, ch chan *TreeNode, nodesVisited *int, nodesVisitedMu *sync.Mutex) {
+    stack := []*TreeNode{tree}
+    complete := true
+
+    for len(stack) > 0 {
+        curr := stack[len(stack)-1]
         stack = stack[:len(stack)-1]
 
-        if frame.ChildIdx == len(frame.Relation.SourceNodes) {
-            // Finished building this tree
-            if isTreeComplete(frame.Tree) && frame.Tree.Element == rootName {
-                key := TreeKey(frame.Tree)
-                if !seen[key] {
-                    seen[key] = true
-                    results = append(results, frame.Tree)
-                }
-            }
+        nodesVisitedMu.Lock()
+        *nodesVisited++
+        nodesVisitedMu.Unlock()
+
+        if curr.Recipe == nil || len(curr.Ingredients) != 2 {
             continue
         }
 
-        childNode := frame.Relation.SourceNodes[frame.ChildIdx]
-        if childNode == nil {
-            continue
-        }
-
-        // Push parent frame back to continue after resolving this child
-        stack = append(stack, Frame{
-            Tree:     frame.Tree,
-            Node:     frame.Node,
-            Relation: frame.Relation,
-            ChildIdx: frame.ChildIdx + 1,
-        })
-
-        if childNode.Element.Tier == 0 {
-            // Base element: create leaf
-            frame.Tree.Ingredients[frame.ChildIdx] = &TreeNode{
-                Element:     childNode.Element.Name,
-                Recipe:      nil,
-                Ingredients: []*TreeNode{},
-            }
-            continue
-        }
-
-        // Expand all recipes for this childNode
-        for _, childRel := range childNode.Parents {
-            if len(childRel.Recipe.Ingredients) != 2 {
+        for i := 0; i < 2; i++ {
+            child := curr.Ingredients[i]
+            childNode, err := elementsModel.GetInstance().GetElementNode(child.Element)
+            if err != nil || childNode == nil {
+                complete = false
                 continue
             }
-            subTree := &TreeNode{
-                Element:     childNode.Element.Name,
-                Recipe:      childRel.Recipe.Ingredients,
-                Ingredients: make([]*TreeNode, 2),
+
+            if childNode.Element.Tier == 0 {
+                curr.Ingredients[i] = &TreeNode{
+                    Element:     child.Element,
+                    Recipe:      nil,
+                    Ingredients: []*TreeNode{},
+                }
+                continue
             }
-            // Attach to current tree
-            frame.Tree.Ingredients[frame.ChildIdx] = subTree
-            // Push child subtree exploration
-            stack = append(stack, Frame{
-                Tree:     subTree,
-                Node:     childNode,
-                Relation: childRel,
-                ChildIdx: 0,
-            })
+
+            found := false
+            for _, childRel := range childNode.Parents {
+                if len(childRel.Recipe.Ingredients) != 2 {
+                    continue
+                }
+                subTree := &TreeNode{
+                    Element: child.Element,
+                    Recipe:  childRel.Recipe.Ingredients,
+                    Ingredients: []*TreeNode{
+                        {Element: childRel.Recipe.Ingredients[0]},
+                        {Element: childRel.Recipe.Ingredients[1]},
+                    },
+                }
+                curr.Ingredients[i] = subTree
+                stack = append(stack, subTree)
+                found = true
+                break
+            }
+            if !found {
+                complete = false
+            }
         }
     }
 
-    // Merge all trees into a single root node
-    return MergeTrees(results)
+    if complete && tree.Element == rootName && isTreeComplete(tree) {
+        key := TreeKey(tree)
+        if _, loaded := seen.LoadOrStore(key, true); !loaded {
+            ch <- tree
+        }
+    }
 }
 
 func isTreeComplete(tree *TreeNode) bool {
@@ -147,7 +170,7 @@ func isTreeComplete(tree *TreeNode) bool {
 		}
 
 		if curr.Recipe == nil {
-			continue // Base element, complete
+			continue 
 		}
 
 		if len(curr.Ingredients) != 2 {
@@ -165,104 +188,120 @@ func isTreeComplete(tree *TreeNode) bool {
 	return true
 }
 
-func FindNRecipesForElementBFS(target *elementsModel.ElementNode, maxCount int) *TreeNode {
-    type Frame struct {
-        Tree *TreeNode
-    }
-
-    var results []*TreeNode
-    seen := map[string]bool{}
-    queue := []Frame{}
-
+func FindNRecipesForElementBFS(target *elementsModel.ElementNode, maxCount int) (*TreeNode, int) {
     rootName := target.Element.Name
+    seen := sync.Map{}
+    var results []*TreeNode
+    var mu sync.Mutex
+    var wg sync.WaitGroup
+    ch := make(chan *TreeNode, maxCount)
 
-    // Seed the queue with all recipes for the target element
+    nodesVisited := 0
+    var nodesVisitedMu sync.Mutex
+
     for _, relation := range target.Parents {
         if len(relation.Recipe.Ingredients) != 2 {
             continue
         }
-        tree := &TreeNode{
-            Element: rootName,
-            Recipe:  relation.Recipe.Ingredients,
-            Ingredients: []*TreeNode{
-                {Element: relation.Recipe.Ingredients[0]},
-                {Element: relation.Recipe.Ingredients[1]},
-            },
-        }
-        queue = append(queue, Frame{Tree: tree})
+
+        wg.Add(1)
+        go func(rel *elementsModel.ElementRelation) {
+            defer wg.Done()
+
+            tree := &TreeNode{
+                Element: rootName,
+                Recipe:  rel.Recipe.Ingredients,
+                Ingredients: []*TreeNode{
+                    {Element: rel.Recipe.Ingredients[0]},
+                    {Element: rel.Recipe.Ingredients[1]},
+                },
+            }
+
+            if expandTreeBFS(tree, rootName, &nodesVisited, &nodesVisitedMu) {
+                key := TreeKey(tree)
+                if _, loaded := seen.LoadOrStore(key, true); !loaded {
+                    ch <- tree
+                }
+            }
+        }(relation)
     }
 
-    for len(queue) > 0 && len(results) < maxCount {
-        frame := queue[0]
-        queue = queue[1:]
+    go func() {
+        wg.Wait()
+        close(ch)
+    }()
 
-        tree := frame.Tree
-        stack := []*TreeNode{tree}
-        complete := true
+    for tree := range ch {
+        mu.Lock()
+        results = append(results, tree)
+        if len(results) >= maxCount {
+            mu.Unlock()
+            break
+        }
+        mu.Unlock()
+    }
 
-        // BFS-like traversal to expand non-base ingredients
-        for len(stack) > 0 {
-            curr := stack[0]
-            stack = stack[1:]
+    return MergeTrees(results), nodesVisited
+}
 
-            if curr.Recipe == nil || len(curr.Ingredients) != 2 {
+func expandTreeBFS(tree *TreeNode, rootName string, nodesVisited *int, nodesVisitedMu *sync.Mutex) bool {
+    stack := []*TreeNode{tree}
+    complete := true
+
+    for len(stack) > 0 {
+        curr := stack[0]
+        stack = stack[1:]
+
+        nodesVisitedMu.Lock()
+        *nodesVisited++
+        nodesVisitedMu.Unlock()
+
+        if curr.Recipe == nil || len(curr.Ingredients) != 2 {
+            continue
+        }
+
+        for i := 0; i < 2; i++ {
+            child := curr.Ingredients[i]
+            childNode, err := elementsModel.GetInstance().GetElementNode(child.Element)
+            if err != nil || childNode == nil {
+                complete = false
                 continue
             }
 
-            for i := 0; i < 2; i++ {
-                child := curr.Ingredients[i]
-                childNode, err := elementsModel.GetInstance().GetElementNode(child.Element)
-                if err != nil || childNode == nil {
-                    complete = false
-                    continue
+            if childNode.Element.Tier == 0 {
+                curr.Ingredients[i] = &TreeNode{
+                    Element:     child.Element,
+                    Recipe:      nil,
+                    Ingredients: []*TreeNode{},
                 }
-
-                // If base element, convert to full leaf node
-                if childNode.Element.Tier == 0 {
-                    curr.Ingredients[i] = &TreeNode{
-                        Element:     child.Element,
-                        Recipe:      nil,
-                        Ingredients: []*TreeNode{},
-                    }
-                    continue
-                }
-
-                // Expand with first valid recipe
-                found := false
-                for _, rel := range childNode.Parents {
-                    if len(rel.Recipe.Ingredients) != 2 {
-                        continue
-                    }
-                    subTree := &TreeNode{
-                        Element: child.Element,
-                        Recipe:  rel.Recipe.Ingredients,
-                        Ingredients: []*TreeNode{
-                            {Element: rel.Recipe.Ingredients[0]},
-                            {Element: rel.Recipe.Ingredients[1]},
-                        },
-                    }
-                    curr.Ingredients[i] = subTree
-                    stack = append(stack, subTree)
-                    found = true
-                    break
-                }
-                if !found {
-                    complete = false
-                }
+                continue
             }
-        }
 
-        if complete && tree.Element == rootName && isTreeComplete(tree) {
-            key := TreeKey(tree)
-            if !seen[key] {
-                seen[key] = true
-                results = append(results, tree)
+            found := false
+            for _, rel := range childNode.Parents {
+                if len(rel.Recipe.Ingredients) != 2 {
+                    continue
+                }
+                subTree := &TreeNode{
+                    Element: child.Element,
+                    Recipe:  rel.Recipe.Ingredients,
+                    Ingredients: []*TreeNode{
+                        {Element: rel.Recipe.Ingredients[0]},
+                        {Element: rel.Recipe.Ingredients[1]},
+                    },
+                }
+                curr.Ingredients[i] = subTree
+                stack = append(stack, subTree)
+                found = true
+                break
+            }
+            if !found {
+                complete = false
             }
         }
     }
 
-    // Merge all trees into a single root node
-    return MergeTrees(results)
+    return complete && tree.Element == rootName && isTreeComplete(tree)
 }
 
 func TreeKey(tree *TreeNode) string {
@@ -279,57 +318,6 @@ func TreeKey(tree *TreeNode) string {
 	}
 	return fmt.Sprintf("%s(%s,%s)", tree.Element, left, right)
 }
-
-// func PrintRecipeTree(tree *TreeNode) {
-// 	if tree == nil {
-// 		return
-// 	}
-
-// 	type StackFrame struct {
-// 		Node   *TreeNode
-// 		Prefix string // accumulated prefix (e.g. "│   ")
-// 		IsLast bool   // whether this node is the last child
-// 	}
-
-// 	stack := []StackFrame{{Node: tree, Prefix: "", IsLast: true}}
-
-// 	for len(stack) > 0 {
-// 		// Pop from the back for correct DFS order
-// 		frame := stack[len(stack)-1]
-// 		stack = stack[:len(stack)-1]
-
-// 		node := frame.Node
-// 		connector := "├── "
-// 		if frame.IsLast {
-// 			connector = "└── "
-// 		}
-// 		fmt.Printf("%s%s", frame.Prefix, connector)
-// 		if node.Recipe != nil {
-// 			fmt.Printf("%s = %s + %s\n", node.Element, node.Recipe[0], node.Recipe[1])
-// 		} else {
-// 			fmt.Printf("%s\n", node.Element)
-// 		}
-
-// 		// Prepare next children in reverse order (so first shows on top)
-// 		if len(node.Ingredients) > 0 {
-// 			newPrefix := frame.Prefix
-// 			if frame.IsLast {
-// 				newPrefix += "    "
-// 			} else {
-// 				newPrefix += "│   "
-// 			}
-// 			for i := len(node.Ingredients) - 1; i >= 0; i-- {
-// 				child := node.Ingredients[i]
-// 				isLast := i == len(node.Ingredients)-1
-// 				stack = append(stack, StackFrame{
-// 					Node:   child,
-// 					Prefix: newPrefix,
-// 					IsLast: isLast,
-// 				})
-// 			}
-// 		}
-// 	}
-// }
 
 func MergeTrees(trees []*TreeNode) *TreeNode {
     if len(trees) == 0 {
