@@ -107,7 +107,6 @@ func (es *ElementsService) buildElementGraph() {
 		Tier0Nodes: []*ElementNode{},
 	}
 	
-	// First pass: Create all nodes
 	for name, element := range es.elementsMap {
 		node := &ElementNode{
 			Element:  element,
@@ -121,29 +120,35 @@ func (es *ElementsService) buildElementGraph() {
 		}
 	}
 	
-	for _, node := range graph.AllNodes {
-		if node.Element.Recipes == nil {
-			continue
-		}
-		
-		for _, recipe := range node.Element.Recipes {
-			relation := &ElementRelation{
-				TargetNode:  node,
-				SourceNodes: []*ElementNode{},
-				Recipe:      recipe,
-			}
-			
-			for _, ingredientName := range recipe.Ingredients {
-				if ingredientNode, exists := graph.AllNodes[ingredientName]; exists {
-					relation.SourceNodes = append(relation.SourceNodes, ingredientNode)
-					
-					ingredientNode.Children = append(ingredientNode.Children, relation)
-				}
-			}
-			
-			node.Parents = append(node.Parents, relation)
-		}
-	}
+    for _, node := range graph.AllNodes {
+        if node.Element.Recipes == nil {
+            continue
+        }
+
+        for _, recipe := range node.Element.Recipes {
+            relation := &ElementRelation{
+                TargetNode:  node,
+                SourceNodes: []*ElementNode{},
+                Recipe:      recipe,
+            }
+
+            shouldAddParent := true
+            for _, ingredientName := range recipe.Ingredients {
+                if ingredientNode, exists := graph.AllNodes[ingredientName]; exists {
+                    if ingredientNode.Element.Tier > node.Element.Tier {
+                        shouldAddParent = false
+                    } else {
+                        relation.SourceNodes = append(relation.SourceNodes, ingredientNode)
+                        ingredientNode.Children = append(ingredientNode.Children, relation)
+                    }
+                }
+            }
+
+            if shouldAddParent {
+                node.Parents = append(node.Parents, relation)
+            }
+        }
+    }
 	
 	for _, tier0Node := range graph.Tier0Nodes {
 		rootRelation := &ElementRelation{
