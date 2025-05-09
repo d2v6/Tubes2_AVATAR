@@ -2,12 +2,16 @@ package ElementsController
 
 import (
 	ElementsModel "backend/models"
-	"errors"
 	"fmt"
-	"strings"
 )
 
 type ElementController struct {
+}
+
+type TreeNode struct {
+	Element     string      `json:"element"`
+	Ingredients []*TreeNode `json:"ingredients"`
+	Recipe      []string    `json:"recipe"`
 }
 
 func NewElementController(filePath string) (*ElementController, error) {
@@ -15,258 +19,392 @@ func NewElementController(filePath string) (*ElementController, error) {
 	if err != nil {
 		return nil, err
 	}
-	
 	return &ElementController{}, nil
 }
 
-type RecipeStep struct {
-	Element     string
-	Ingredients []string
-}
-
-type ElementPath struct {
-	TargetElement string
-	Steps         []RecipeStep
-}
-
-func (ec *ElementController) FindPathToElement(targetName string) (*ElementPath, error) {
-	elementsService := ElementsModel.GetInstance()
-	
-	targetNode, err := elementsService.GetElementNode(targetName)
+func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool) ([]*TreeNode, error) {
+	node, err := ElementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
 		return nil, err
 	}
-	
-	if targetNode.Element.Tier == 0 {
-		return &ElementPath{
-			TargetElement: targetName,
-			Steps:         []RecipeStep{},
-		}, nil
-	}
-	
-	path, err := findOptimalPath(targetNode)
-	if err != nil {
-		return nil, err
-	}
-	
-	return path, nil
-}
-
-func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error) {
-	path := &ElementPath{
-		TargetElement: targetNode.Element.Name,
-		Steps:         []RecipeStep{},
-	}
-	
-	processedElements := make(map[string]bool)
-	
-	queue := []*ElementsModel.ElementNode{targetNode}
-	
-	elementToStep := make(map[string]RecipeStep)
-	
-	elementToTierSum := make(map[string]int)
-	elementToTierSum[targetNode.Element.Name] = targetNode.Element.Tier
-	
-	for len(queue) > 0 {
-		currentNode := queue[0]
-		queue = queue[1:]
-		
-		if processedElements[currentNode.Element.Name] {
-			continue
-		}
-		processedElements[currentNode.Element.Name] = true
-		
-		if currentNode.Element.Tier == 0 {
-			continue
-		}
-		
-		var bestRelation *ElementsModel.ElementRelation
-		lowestTierSum := 9999999
-		
-		for _, relation := range currentNode.Parents {
-			tierSum := 0
-			allIngredientsExist := true
-			
-			for _, sourceNode := range relation.SourceNodes {
-				if sourceNode == nil || sourceNode.Element == nil {
-					allIngredientsExist = false
-					break
-				}
-				tierSum += sourceNode.Element.Tier
-			}
-			
-			if allIngredientsExist && tierSum < lowestTierSum {
-				lowestTierSum = tierSum
-				bestRelation = relation
-			}
-		}
-		
-		if bestRelation != nil {
-			step := RecipeStep{
-				Element:     currentNode.Element.Name,
-				Ingredients: bestRelation.Recipe.Ingredients,
-			}
-			
-			elementToStep[currentNode.Element.Name] = step
-			
-			for _, sourceNode := range bestRelation.SourceNodes {
-				if sourceNode.Element.Tier > 0 {
-					queue = append(queue, sourceNode)
-				}
-			}
-		}
-	}
-	
-	elementStack := []string{targetNode.Element.Name}
-	visitedElements := make(map[string]bool)
-	
-	for len(elementStack) > 0 {
-		currentElement := elementStack[len(elementStack)-1]
-		elementStack = elementStack[:len(elementStack)-1]
-		
-		if visitedElements[currentElement] {
-			continue
-		}
-		visitedElements[currentElement] = true
-		
-		step, exists := elementToStep[currentElement]
-		if exists {
-			path.Steps = append(path.Steps, step)
-			
-			for _, ingredient := range step.Ingredients {
-				if elementToStep[ingredient].Element != "" { 
-					elementStack = append(elementStack, ingredient)
-				}
-			}
-		}
-	}
-	
-	sortSteps(path)
-	
-	return path, nil
-}
-
-func sortSteps(path *ElementPath) {
-	elementToStepIndex := make(map[string]int)
-	for i, step := range path.Steps {
-		elementToStepIndex[step.Element] = i
-	}
-	
-	availableElements := make(map[string]bool)
-	
-	for _, step := range path.Steps {
-		for _, ingredient := range step.Ingredients {
-			if _, exists := elementToStepIndex[ingredient]; !exists {
-				availableElements[ingredient] = true 
-			}
-		}
-	}
-	
-	sortedSteps := []RecipeStep{}
-	for len(sortedSteps) < len(path.Steps) {
-		stepAdded := false
-		for _, step := range path.Steps {
-			alreadyAdded := false
-			for _, sortedStep := range sortedSteps {
-				if sortedStep.Element == step.Element {
-					alreadyAdded = true
-					break
-				}
-			}
-			if alreadyAdded {
-				continue
-			}
-			
-			canCreate := true
-			for _, ingredient := range step.Ingredients {
-				if !availableElements[ingredient] {
-					canCreate = false
-					break
-				}
-			}
-			
-			if canCreate {
-				sortedSteps = append(sortedSteps, step)
-				availableElements[step.Element] = true
-				stepAdded = true
-			}
-		}
-		
-		if !stepAdded {
-			break
-		}
-	}
-	
-	path.Steps = sortedSteps
-}
-
-func (ec *ElementController) GetElementCreationInstructions(targetName string) (string, error) {
-	path, err := ec.FindPathToElement(targetName)
-	if err != nil {
-		return "", err
-	}
-	
-	if len(path.Steps) == 0 {
-		return fmt.Sprintf("%s is a tier 0 element and cannot be created from other elements.", targetName), nil
-	}
-	
-	instructions := fmt.Sprintf("To create %s:\n", targetName)
-	
-	for i, step := range path.Steps {
-		instructions += fmt.Sprintf("%d. Combine %s and %s to create %s\n", 
-			i+1, 
-			step.Ingredients[0], 
-			step.Ingredients[1],
-			step.Element)
-	}
-	
-	return instructions, nil
-}
-
-func (ec *ElementController) FindAllPossiblePaths(targetName string) ([]ElementPath, error) {
-	return nil, errors.New("not implemented yet")
-}
-
-func (ec *ElementController) GetElementDependencyTree(targetName string) (string, error) {
-	path, err := ec.FindPathToElement(targetName)
-	if err != nil {
-		return "", err
-	}
-	
-	if len(path.Steps) == 0 {
-		return fmt.Sprintf("%s (tier 0)", targetName), nil
-	}
-	
-	elementToIngredients := make(map[string][]string)
-	for _, step := range path.Steps {
-		elementToIngredients[step.Element] = step.Ingredients
-	}
-	
-	treeText := buildTreeRepresentation(targetName, elementToIngredients, "", true)
-	
-	return treeText, nil
-}
-
-func buildTreeRepresentation(elementName string, elementToIngredients map[string][]string, indent string, isLast bool) string {
-	var sb strings.Builder
-	
-	if isLast {
-		sb.WriteString(indent + "└── " + elementName + "\n")
-		indent += "    "
+	if useBFS {
+		return FindNRecipesForElementBFS(node), nil
 	} else {
-		sb.WriteString(indent + "├── " + elementName + "\n")
-		indent += "│   "
+		return FindNRecipesForElementDFS(node), nil
 	}
-	
-	ingredients, exists := elementToIngredients[elementName]
-	if !exists {
-		return sb.String()
-	}
-	
-	for i, ingredient := range ingredients {
-		isLastIngredient := (i == len(ingredients)-1)
-		sb.WriteString(buildTreeRepresentation(ingredient, elementToIngredients, indent, isLastIngredient))
-	}
-	
-	return sb.String()
 }
+
+func FindNRecipesForElementDFS(target *ElementsModel.ElementNode) []*TreeNode {
+	type StackState struct {
+		Node   *ElementsModel.ElementNode
+		Tree   *TreeNode
+		Parent *TreeNode
+	}
+
+	var finalResults []*TreeNode
+	stack := []*StackState{}
+
+	for _, rel := range target.Parents {
+		root := &TreeNode{
+			Element: target.Element.Name,
+			Recipe:  rel.Recipe.Ingredients,
+		}
+		stack = append(stack, &StackState{Node: target, Tree: root, Parent: nil})
+	}
+
+	for len(stack) > 0 {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		for _, rel := range current.Node.Parents {
+			children := []*TreeNode{}
+
+			for _, src := range rel.SourceNodes {
+				child := &TreeNode{
+					Element: src.Element.Name,
+				}
+				children = append(children, child)
+				stack = append(stack, &StackState{
+					Node:   src,
+					Tree:   child,
+					Parent: current.Tree,
+				})
+			}
+
+			current.Tree.Ingredients = children
+			if current.Parent == nil {
+				finalResults = append(finalResults, current.Tree)
+				return finalResults
+			}
+		}
+	}
+	return finalResults
+}
+
+func FindNRecipesForElementBFS(target *ElementsModel.ElementNode) []*TreeNode {
+	type QueueState struct {
+		Node   *ElementsModel.ElementNode
+		Tree   *TreeNode
+		Parent *TreeNode
+	}
+
+	var finalResults []*TreeNode
+	queue := []*QueueState{}
+
+	for _, rel := range target.Parents {
+		root := &TreeNode{
+			Element: target.Element.Name,
+			Recipe:  rel.Recipe.Ingredients,
+		}
+		queue = append(queue, &QueueState{Node: target, Tree: root, Parent: nil})
+	}
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		for _, rel := range current.Node.Parents {
+			children := []*TreeNode{}
+
+			for _, src := range rel.SourceNodes {
+				child := &TreeNode{
+					Element: src.Element.Name,
+				}
+				children = append(children, child)
+				queue = append(queue, &QueueState{
+					Node:   src,
+					Tree:   child,
+					Parent: current.Tree,
+				})
+			}
+
+			current.Tree.Ingredients = children
+			if current.Parent == nil {
+				finalResults = append(finalResults, current.Tree)
+				return finalResults
+			}
+		}
+	}
+	return finalResults
+}
+
+func PrintTree(node *TreeNode, prefix string, isLast bool) {
+	if node == nil {
+		return
+	}
+
+	connector := "├──"
+	if isLast {
+		connector = "└──"
+	}
+
+	// Show element name + recipe if available
+	if len(node.Recipe) == 2 {
+		fmt.Printf("%s%s %s (from: %s + %s)\n", prefix, connector, node.Element, node.Recipe[0], node.Recipe[1])
+	} else {
+		fmt.Printf("%s%s %s\n", prefix, connector, node.Element)
+	}
+
+	newPrefix := prefix
+	if isLast {
+		newPrefix += "    "
+	} else {
+		newPrefix += "│   "
+	}
+
+	for i, child := range node.Ingredients {
+		PrintTree(child, newPrefix, i == len(node.Ingredients)-1)
+	}
+}
+
+// type RecipeStep struct {
+// 	Element     string
+// 	Ingredients []string
+// }
+
+// type ElementPath struct {
+// 	TargetElement string
+// 	Steps         []RecipeStep
+// }
+
+// func (ec *ElementController) FindPathToElement(targetName string) (*ElementPath, error) {
+// 	elementsService := ElementsModel.GetInstance()
+
+// 	targetNode, err := elementsService.GetElementNode(targetName)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	if targetNode.Element.Tier == 0 {
+// 		return &ElementPath{
+// 			TargetElement: targetName,
+// 			Steps:         []RecipeStep{},
+// 		}, nil
+// 	}
+
+// 	path, err := findOptimalPath(targetNode)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	return path, nil
+// }
+
+// func findOptimalPath(targetNode *ElementsModel.ElementNode) (*ElementPath, error) {
+// 	path := &ElementPath{
+// 		TargetElement: targetNode.Element.Name,
+// 		Steps:         []RecipeStep{},
+// 	}
+
+// 	processedElements := make(map[string]bool)
+
+// 	queue := []*ElementsModel.ElementNode{targetNode}
+
+// 	elementToStep := make(map[string]RecipeStep)
+
+// 	elementToTierSum := make(map[string]int)
+// 	elementToTierSum[targetNode.Element.Name] = targetNode.Element.Tier
+
+// 	for len(queue) > 0 {
+// 		currentNode := queue[0]
+// 		queue = queue[1:]
+
+// 		if processedElements[currentNode.Element.Name] {
+// 			continue
+// 		}
+// 		processedElements[currentNode.Element.Name] = true
+
+// 		if currentNode.Element.Tier == 0 {
+// 			continue
+// 		}
+
+// 		var bestRelation *ElementsModel.ElementRelation
+// 		lowestTierSum := 9999999
+
+// 		for _, relation := range currentNode.Parents {
+// 			tierSum := 0
+// 			allIngredientsExist := true
+
+// 			for _, sourceNode := range relation.SourceNodes {
+// 				if sourceNode == nil || sourceNode.Element == nil {
+// 					allIngredientsExist = false
+// 					break
+// 				}
+// 				tierSum += sourceNode.Element.Tier
+// 			}
+
+// 			if allIngredientsExist && tierSum < lowestTierSum {
+// 				lowestTierSum = tierSum
+// 				bestRelation = relation
+// 			}
+// 		}
+
+// 		if bestRelation != nil {
+// 			step := RecipeStep{
+// 				Element:     currentNode.Element.Name,
+// 				Ingredients: bestRelation.Recipe.Ingredients,
+// 			}
+
+// 			elementToStep[currentNode.Element.Name] = step
+
+// 			for _, sourceNode := range bestRelation.SourceNodes {
+// 				if sourceNode.Element.Tier > 0 {
+// 					queue = append(queue, sourceNode)
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	elementStack := []string{targetNode.Element.Name}
+// 	visitedElements := make(map[string]bool)
+
+// 	for len(elementStack) > 0 {
+// 		currentElement := elementStack[len(elementStack)-1]
+// 		elementStack = elementStack[:len(elementStack)-1]
+
+// 		if visitedElements[currentElement] {
+// 			continue
+// 		}
+// 		visitedElements[currentElement] = true
+
+// 		step, exists := elementToStep[currentElement]
+// 		if exists {
+// 			path.Steps = append(path.Steps, step)
+
+// 			for _, ingredient := range step.Ingredients {
+// 				if elementToStep[ingredient].Element != "" {
+// 					elementStack = append(elementStack, ingredient)
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	sortSteps(path)
+
+// 	return path, nil
+// }
+
+// func sortSteps(path *ElementPath) {
+// 	elementToStepIndex := make(map[string]int)
+// 	for i, step := range path.Steps {
+// 		elementToStepIndex[step.Element] = i
+// 	}
+
+// 	availableElements := make(map[string]bool)
+
+// 	for _, step := range path.Steps {
+// 		for _, ingredient := range step.Ingredients {
+// 			if _, exists := elementToStepIndex[ingredient]; !exists {
+// 				availableElements[ingredient] = true
+// 			}
+// 		}
+// 	}
+
+// 	sortedSteps := []RecipeStep{}
+// 	for len(sortedSteps) < len(path.Steps) {
+// 		stepAdded := false
+// 		for _, step := range path.Steps {
+// 			alreadyAdded := false
+// 			for _, sortedStep := range sortedSteps {
+// 				if sortedStep.Element == step.Element {
+// 					alreadyAdded = true
+// 					break
+// 				}
+// 			}
+// 			if alreadyAdded {
+// 				continue
+// 			}
+
+// 			canCreate := true
+// 			for _, ingredient := range step.Ingredients {
+// 				if !availableElements[ingredient] {
+// 					canCreate = false
+// 					break
+// 				}
+// 			}
+
+// 			if canCreate {
+// 				sortedSteps = append(sortedSteps, step)
+// 				availableElements[step.Element] = true
+// 				stepAdded = true
+// 			}
+// 		}
+
+// 		if !stepAdded {
+// 			break
+// 		}
+// 	}
+
+// 	path.Steps = sortedSteps
+// }
+
+// func (ec *ElementController) GetElementCreationInstructions(targetName string) (string, error) {
+// 	path, err := ec.FindPathToElement(targetName)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	if len(path.Steps) == 0 {
+// 		return fmt.Sprintf("%s is a tier 0 element and cannot be created from other elements.", targetName), nil
+// 	}
+
+// 	instructions := fmt.Sprintf("To create %s:\n", targetName)
+
+// 	for i, step := range path.Steps {
+// 		instructions += fmt.Sprintf("%d. Combine %s and %s to create %s\n",
+// 			i+1,
+// 			step.Ingredients[0],
+// 			step.Ingredients[1],
+// 			step.Element)
+// 	}
+
+// 	return instructions, nil
+// }
+
+// func (ec *ElementController) FindAllPossiblePaths(targetName string) ([]ElementPath, error) {
+// 	return nil, errors.New("not implemented yet")
+// }
+
+// func (ec *ElementController) GetElementDependencyTree(targetName string) (string, error) {
+// 	path, err := ec.FindPathToElement(targetName)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	if len(path.Steps) == 0 {
+// 		return fmt.Sprintf("%s (tier 0)", targetName), nil
+// 	}
+
+// 	elementToIngredients := make(map[string][]string)
+// 	for _, step := range path.Steps {
+// 		elementToIngredients[step.Element] = step.Ingredients
+// 	}
+
+// 	treeText := buildTreeRepresentation(targetName, elementToIngredients, "", true)
+
+// 	return treeText, nil
+// }
+
+// func buildTreeRepresentation(elementName string, elementToIngredients map[string][]string, indent string, isLast bool) string {
+// 	var sb strings.Builder
+
+// 	if isLast {
+// 		sb.WriteString(indent + "└── " + elementName + "\n")
+// 		indent += "    "
+// 	} else {
+// 		sb.WriteString(indent + "├── " + elementName + "\n")
+// 		indent += "│   "
+// 	}
+
+// 	ingredients, exists := elementToIngredients[elementName]
+// 	if !exists {
+// 		return sb.String()
+// 	}
+
+// 	for i, ingredient := range ingredients {
+// 		isLastIngredient := (i == len(ingredients)-1)
+// 		sb.WriteString(buildTreeRepresentation(ingredient, elementToIngredients, indent, isLastIngredient))
+// 	}
+
+// 	return sb.String()
+// }
