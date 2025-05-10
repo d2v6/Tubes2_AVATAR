@@ -15,7 +15,7 @@ type TreeNode = {
 
 type TreeGraphNode = {
   name: string;
-  children?: TreeGraphNode[];
+  children: TreeGraphNode[];
 };
 
 function getTreeSize(node: TreeGraphNode): { depth: number; maxBreadth: number } {
@@ -78,7 +78,7 @@ function App() {
     const children: TreeGraphNode[] = node.ingredients ? Object.values(node.ingredients).map(convertToTreeGraphFormat) : [];
     return {
       name: node.element,
-      children: children.length > 0 ? children : undefined,
+      children: children,
     };
   }, []);
 
@@ -138,7 +138,7 @@ function App() {
                   const { depth, maxBreadth } = getTreeSize(treeData);
                   const height = Math.max(300, depth * 150);
                   const width = Math.max(600, maxBreadth * 300);
-                  return <Tree data={treeData} height={height} width={width} animated svgProps={{ className: "custom" }} />;
+                  return <Tree data={treeData} height={height} width={width} svgProps={{ className: "custom" }} />;
                 })()}
             </div>
           </div>

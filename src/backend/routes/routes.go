@@ -28,6 +28,10 @@ func InitRoutes() http.Handler {
         r.Get("/recipes", handleFindMultipleRecipes)
     })
 
+    fs := http.FileServer(http.Dir("frontend/dist"))
+    r.Handle("/*", fs)
+
+
     return r
 }
 
