@@ -18,6 +18,22 @@ type TreeGraphNode = {
   children?: TreeGraphNode[];
 };
 
+function getTreeSize(node: TreeGraphNode): { depth: number; maxBreadth: number } {
+  let maxDepth = 0;
+  let maxBreadth = 0;
+
+  function traverse(n: TreeGraphNode, depth: number) {
+    if (depth > maxDepth) maxDepth = depth;
+    if (n.children && n.children.length > maxBreadth) {
+      maxBreadth = n.children.length;
+    }
+    n.children?.forEach((child) => traverse(child, depth + 1));
+  }
+
+  traverse(node, 1);
+  return { depth: maxDepth, maxBreadth };
+}
+
 function App() {
   const [recipeTree, setRecipeTree] = useState<TreeNode | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,7 +133,13 @@ function App() {
               <p>Time Taken: {timeTaken} ms</p>
             </div>
             <div id="treeWrapper" className="overflow-auto border p-4" style={{ width: "100%", height: "600px" }}>
-              <Tree data={treeData} height={500} width={1000} animated svgProps={{ className: "custom" }} />
+              {treeData &&
+                (() => {
+                  const { depth, maxBreadth } = getTreeSize(treeData);
+                  const height = Math.max(300, depth * 150);
+                  const width = Math.max(600, maxBreadth * 300);
+                  return <Tree data={treeData} height={height} width={width} animated svgProps={{ className: "custom" }} />;
+                })()}
             </div>
           </div>
         )}
