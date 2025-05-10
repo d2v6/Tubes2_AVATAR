@@ -1,15 +1,20 @@
 package main
 
 import (
+	"log"
+	"net/http"
+	"os"
+
 	elementsModel "backend/models"
 	"backend/routes"
 	"backend/scraper"
-	"log"
-	"net/http"
 )
 
 func main() {
-	filePath := "data/elements.json"
+	filePath := os.Getenv("ELEMENTS_JSON_PATH")
+	if filePath == "" {
+		filePath = "data/elements.json"
+	}
 
 	log.Println("Scraping data...")
 	scraper.Scrape(filePath)
@@ -20,10 +25,11 @@ func main() {
 		log.Fatalf("Error initializing elements service: %v", err)
 	}
 
-	log.Println("Starting server on http://localhost:8080")
+	log.Println("Starting server on http://0.0.0.0:8080")
 	router := routes.InitRoutes()
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
+
 
 // package main
 
