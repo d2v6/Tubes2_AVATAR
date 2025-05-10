@@ -32,6 +32,8 @@ function App() {
   const fetchRecipes = () => {
     setLoading(true);
     setError(null);
+    setTreeData(null);
+    setRecipeTree(null);
 
     fetch(`http://localhost:8080/api/recipes?target=${target}&method=${method}&count=${count}`)
       .then((res) => {
@@ -45,7 +47,7 @@ function App() {
       .then((data) => {
         setRecipeTree(data.recipes);
         setNodesVisited(data.nodesVisited);
-        setTimeTaken(parseFloat(data.duration) * 1000); // Convert seconds to milliseconds
+        setTimeTaken(parseFloat(data.duration) * 1000);
         setLoading(false);
         console.log("Recipe tree data:", data);
       })
@@ -57,7 +59,7 @@ function App() {
   };
 
   const convertToTreeGraphFormat = useCallback((node: TreeNode): TreeGraphNode => {
-    const children: TreeGraphNode[] = Object.values(node.ingredients).map(convertToTreeGraphFormat);
+    const children: TreeGraphNode[] = node.ingredients ? Object.values(node.ingredients).map(convertToTreeGraphFormat) : [];
     return {
       name: node.element,
       children: children.length > 0 ? children : undefined,

@@ -3,6 +3,7 @@ package routes
 import (
 	elementsController "backend/controllers"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -12,23 +13,22 @@ import (
 )
 
 func InitRoutes() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+    r := chi.NewRouter()
+    r.Use(middleware.Logger)
 
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: false,
-	}))
+    r.Use(cors.Handler(cors.Options{
+        AllowedOrigins:   []string{"*"},
+        AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+        AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+        AllowCredentials: false,
+    }))
 
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/path", handleFindSingleRecipe)
-		
-		r.Get("/recipes", handleFindMultipleRecipes)
-	})
+    r.Route("/api", func(r chi.Router) {
+        r.Get("/path", handleFindSingleRecipe)
+        r.Get("/recipes", handleFindMultipleRecipes)
+    })
 
-	return r
+    return r
 }
 
 func handleFindSingleRecipe(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +59,9 @@ func handleFindSingleRecipe(w http.ResponseWriter, r *http.Request) {
         "nodesVisited": nodesVisited,
         "duration":     duration.String(),
     }
+
+    // Log the response
+    log.Printf("Response: %+v\n", response)
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
@@ -103,6 +106,8 @@ func handleFindMultipleRecipes(w http.ResponseWriter, r *http.Request) {
         "nodesVisited": nodesVisited,
         "duration":     duration.String(),
     }
+
+    log.Printf("Response: %+v\n", response)
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
