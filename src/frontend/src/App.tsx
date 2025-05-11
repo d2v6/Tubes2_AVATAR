@@ -51,7 +51,7 @@ function App() {
     setTreeData(null);
     setRecipeTree(null);
 
-    fetch(`http://localhost:8080/api/recipes?target=${target}&method=${method}&count=${count}`)
+    fetch(`http://localhost:4003/api/recipes?target=${target}&method=${method}&count=${count}`)
       .then((res) => {
         if (!res.ok) {
           return res.text().then((text) => {
