@@ -46,12 +46,13 @@ function App() {
   const [timeTaken, setTimeTaken] = useState<number | null>(null);
 
   const fetchRecipes = () => {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:4003";
     setLoading(true);
     setError(null);
     setTreeData(null);
     setRecipeTree(null);
 
-    fetch(`http://localhost:4003/api/recipes?target=${target}&method=${method}&count=${count}`)
+    fetch(`${baseUrl}/api/recipes?target=${target}&method=${method}&count=${count}`)
       .then((res) => {
         if (!res.ok) {
           return res.text().then((text) => {
