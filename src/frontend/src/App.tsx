@@ -46,7 +46,8 @@ function App() {
   const [timeTaken, setTimeTaken] = useState<number | null>(null);
 
   const fetchRecipes = () => {
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:4003";
+    const baseUrl = "https://tubes2-avatar.kirisame.jp.net";
+    // const baseUrl = "http://localhost:4003";
     setLoading(true);
     setError(null);
     setTreeData(null);
