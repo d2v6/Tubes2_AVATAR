@@ -35,9 +35,9 @@ func main() {
 		log.Fatalf("Error initializing elements service: %v", err)
 	}
 
-	log.Println("Starting server on http://0.0.0.0:8080")
+	log.Println("Starting server on http://0.0.0.0:4003")
 	router := routes.InitRoutes()
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Fatal(http.ListenAndServe(":4003", router))
 }
 
 

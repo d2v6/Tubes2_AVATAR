@@ -24,5 +24,5 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 COPY --from=backend /app/server ./
 COPY --from=backend /app/frontend/dist ./frontend/dist
 RUN mkdir -p /app/src/backend/data
-EXPOSE 8080
+EXPOSE 4003
 CMD ["./server"]
