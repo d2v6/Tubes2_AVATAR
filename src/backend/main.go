@@ -11,28 +11,19 @@ import (
 	"backend/scraper"
 )
 
-func getDataPath() string {
-    cwd, err := os.Getwd()
+func main() {
+	cwd, err := os.Getwd()
     if err != nil {
         log.Fatalf("Cannot get working directory: %v", err)
     }
-    // return filepath.Join(cwd, "src","backend","data", "elements.json") //for docker build
-    return filepath.Join(cwd,"data", "elements.json") // if not using docker
-}
-
-func main() {
-	filePath := os.Getenv("ELEMENTS_JSON_PATH")
-	if filePath == "" {
-		filePath = getDataPath()
-	}
 
 	log.Println("Scraping data...")
-	scraper.Scrape(filePath)
+	scraper.Scrape(filepath.Join(cwd, "src","backend","data", "elements.json"))
 
 	log.Println("Initializing elements model...")
-	err := elementsModel.GetInstance().Initialize(filePath)
-	if err != nil {
-		log.Fatalf("Error initializing elements service: %v", err)
+	errr := elementsModel.GetInstance().Initialize(filepath.Join(cwd, "src","backend","data", "elements.json"))
+	if errr != nil {
+		log.Fatalf("error initializing elements service: %v", errr)
 	}
 
 	log.Println("Starting server on http://0.0.0.0:4003")
