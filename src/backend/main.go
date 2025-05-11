@@ -16,8 +16,8 @@ func getDataPath() string {
     if err != nil {
         log.Fatalf("Cannot get working directory: %v", err)
     }
-    return filepath.Join(cwd, "src","backend","data", "elements.json") //for docker build
-    // return filepath.Join(cwd,"data", "elements.json") // if not using docker
+    // return filepath.Join(cwd, "src","backend","data", "elements.json") //for docker build
+    return filepath.Join(cwd,"data", "elements.json") // if not using docker
 }
 
 func main() {

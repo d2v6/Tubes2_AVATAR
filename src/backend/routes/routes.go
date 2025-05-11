@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"strconv"
+    "strconv"
+    "sort"
 
-	"github.com/go-chi/chi/v5"
+    "github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
@@ -26,6 +27,7 @@ func InitRoutes() http.Handler {
     r.Route("/api", func(r chi.Router) {
         r.Get("/path", handleFindSingleRecipe)
         r.Get("/recipes", handleFindMultipleRecipes)
+        r.Get("/tiers", handleGetAllElementsTiers)
     })
 
     fs := http.FileServer(http.Dir("frontend/dist"))
@@ -115,4 +117,38 @@ func handleFindMultipleRecipes(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(response)
+}
+
+func handleGetAllElementsTiers(w http.ResponseWriter, r *http.Request) {
+    controller, err := elementsController.NewElementController("data/elements.json")
+    if err != nil {
+        http.Error(w, "failed to initialize controller", http.StatusInternalServerError)
+        return
+    }
+
+    tierGroups, err := controller.GetAllElementsTiers()
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+
+    response := map[string]interface{}{
+        "tiers": extractTierNumbers(tierGroups),
+        "elements": tierGroups,
+    }
+
+    log.Printf("Response: %+v\n", response)
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
+}
+
+func extractTierNumbers(tierGroups map[string][]string) []int {
+    tiers := make([]int, 0, len(tierGroups))
+    for tierStr := range tierGroups {
+        tier, _ := strconv.Atoi(tierStr)
+        tiers = append(tiers, tier)
+    }
+    sort.Ints(tiers)
+    return tiers
 }

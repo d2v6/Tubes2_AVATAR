@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -49,6 +50,23 @@ func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool)
 	duration := time.Since(start)
 	result := mergeTrees(trees)
 	return result, nodesVisited, duration, nil
+}
+
+func (ec *ElementController) GetAllElementsTiers() (map[string][]string, error) {
+    elements := elementsModel.GetInstance().GetAllElements()
+
+    tierGroups := make(map[string][]string)
+    
+    for _, element := range elements {
+        tierStr := strconv.Itoa(element.Tier)
+		tierGroups[tierStr] = append(tierGroups[tierStr], element.Name)
+    }
+
+    for _, elements := range tierGroups {
+        sort.Strings(elements)
+    }
+
+    return tierGroups, nil
 }
 
 func (ec *ElementController) getElementNodeCached(name string) (*elementsModel.ElementNode, error) {
