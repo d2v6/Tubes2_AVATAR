@@ -187,6 +187,7 @@ func streamDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<
 								Tree:  clone,
 								Stack: newStack,
 							})
+							resultChan <- clone
 						}
 					}
 
