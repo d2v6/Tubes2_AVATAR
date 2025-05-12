@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Tree } from "react-tree-graph";
 import "react-tree-graph/dist/style.css";
 import "./App.css";
@@ -16,6 +16,13 @@ type TreeNode = {
 type TreeGraphNode = {
   name: string;
   children: TreeGraphNode[];
+};
+
+type TreeWebSocketMessage = {
+  tree: TreeNode;
+  nodesVisited: number;
+  duration?: string;
+  done: boolean;
 };
 
 function getTreeSize(node: TreeGraphNode): { depth: number; maxBreadth: number } {
@@ -36,48 +43,92 @@ function getTreeSize(node: TreeGraphNode): { depth: number; maxBreadth: number }
 
 function App() {
   const [recipeTree, setRecipeTree] = useState<TreeNode | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [target, setTarget] = useState("Brick");
+  const [target, setTarget] = useState("Metal");
   const [method, setMethod] = useState("bfs");
-  const [count, setCount] = useState(1);
+  const [count, setCount] = useState(2);
   const [treeData, setTreeData] = useState<TreeGraphNode | null>(null);
   const [nodesVisited, setNodesVisited] = useState<number | null>(null);
-  const [timeTaken, setTimeTaken] = useState<number | null>(null);
+  const [timeTaken, setTimeTaken] = useState<string | null>(null);
+  const [wsDelay, setWsDelay] = useState(500);
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
 
   const fetchRecipes = () => {
-    // const baseUrl = "https://tubes2-avatar.kirisame.jp.net";
-    const baseUrl = "http://localhost:4003";
     setLoading(true);
     setError(null);
     setTreeData(null);
     setRecipeTree(null);
 
-    fetch(`${baseUrl}/api/recipes?target=${target}&method=${method}&count=${count}`)
-      .then((res) => {
-        if (!res.ok) {
-          return res.text().then((text) => {
-            throw new Error(text || `Failed to fetch: ${res.status}`);
-          });
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+
+    const ws = new WebSocket(`${wsUrl}/ws/tree`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("WebSocket connection established");
+      ws.send(
+        JSON.stringify({
+          target: target,
+          count: count,
+          useBfs: method === "bfs",
+          delay: wsDelay,
+        })
+      );
+    };
+
+    ws.onmessage = (event) => {
+      setTimeout(() => {
+        try {
+          const data = JSON.parse(event.data) as TreeWebSocketMessage;
+          console.log("Data:", data);
+
+          if (data.tree) {
+            setRecipeTree(null);
+            setRecipeTree(data.tree);
+          }
+
+          if (data.nodesVisited) {
+            setNodesVisited(data.nodesVisited);
+          }
+
+          if (data.duration) {
+            setTimeTaken(`${(parseInt(data.duration) / 1e6).toFixed(2)} ms`);
+          }
+
+          if (data.done) {
+            setLoading(false);
+
+            ws.close();
+            wsRef.current = null;
+          }
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+          setError("Failed to parse WebSocket response");
+          setLoading(false);
         }
-        return res.json();
-      })
-      .then((data) => {
-        setRecipeTree(data.recipes);
-        setNodesVisited(data.nodesVisited);
-        setTimeTaken(parseFloat(data.duration) * 1000);
-        setLoading(false);
-        console.log("Recipe tree data:", data);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-        console.error("Error fetching recipes:", err);
-      });
+      }, wsDelay);
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+      setError("WebSocket connection error");
+      setLoading(false);
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket connection closed");
+    };
   };
 
   const convertToTreeGraphFormat = useCallback((node: TreeNode): TreeGraphNode => {
     const children: TreeGraphNode[] = node.ingredients ? Object.values(node.ingredients).map(convertToTreeGraphFormat) : [];
+
     return {
       name: node.element,
       children: children,
@@ -86,6 +137,7 @@ function App() {
 
   useEffect(() => {
     if (recipeTree) {
+      setTreeData(null);
       const data = convertToTreeGraphFormat(recipeTree);
       setTreeData(data);
     }
@@ -93,6 +145,12 @@ function App() {
 
   useEffect(() => {
     fetchRecipes();
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -113,27 +171,42 @@ function App() {
             type="number"
             min="1"
             max="10"
-            value={count}
-            onChange={(e) => setCount(Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+            value={count || ""}
+            onChange={(e) => setCount(e.target.value === "" ? 0 : Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
             placeholder="Max recipes"
             className="border p-2 rounded w-24"
           />
-          <button onClick={handleSearch} className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600">
+          <input
+            type="number"
+            min="0"
+            value={wsDelay || ""}
+            onChange={(e) => setWsDelay(Math.max(0, parseInt(e.target.value) || 0))}
+            placeholder="WebSocket delay (ms)"
+            className="border p-2 rounded w-36"
+          />
+          <button
+            onClick={() => {
+              if (!count) setCount(1);
+              if (!wsDelay) setWsDelay(500);
+              handleSearch();
+            }}
+            className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+            disabled={loading}
+          >
             Find Recipes
           </button>
         </div>
       </div>
 
       <div className="border border-gray-300 rounded-lg overflow-hidden">
-        {loading && <p className="p-4 text-center">Loading...</p>}
         {error && <p className="p-4 text-center text-red-500">Error: {error}</p>}
-        {!loading && !error && !recipeTree && <p className="p-4 text-center">No recipes found for "{target}"</p>}
-        {!loading && recipeTree && treeData && (
+        {!error && !recipeTree && <p className="p-4 text-center">No recipes found for "{target}"</p>}
+        {recipeTree && treeData && (
           <div className="p-4">
             <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.element}</h2>
             <div className="mb-4">
               <p>Nodes Visited: {nodesVisited}</p>
-              <p>Time Taken: {timeTaken} ms</p>
+              <p>Time Taken: {timeTaken}</p>
             </div>
             <div id="treeWrapper" className="overflow-auto border p-4" style={{ width: "100%", height: "600px" }}>
               {treeData &&

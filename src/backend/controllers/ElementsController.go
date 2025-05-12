@@ -5,22 +5,25 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
-	"strconv"
 	"sync/atomic"
 	"time"
 )
 
 type ElementController struct {
-	// Add a cache for expensive lookups
-	nodeCache sync.Map
 }
 
 type TreeNode struct {
 	Element     string      `json:"element"`
 	Ingredients []*TreeNode `json:"ingredients"`
 	Recipe      []string    `json:"recipe"`
+}
+
+type RecipeStats struct {
+	NodesVisited int           `json:"nodesVisited"`
+	Duration     time.Duration `json:"duration"`
 }
 
 func NewElementController(filePath string) (*ElementController, error) {
@@ -31,61 +34,46 @@ func NewElementController(filePath string) (*ElementController, error) {
 	return &ElementController{}, nil
 }
 
-func (ec *ElementController) FindNRecipes(targetName string, n int, useBFS bool) (*TreeNode, int, time.Duration, error) {
-	node, err := elementsModel.GetInstance().GetElementNode(targetName)
-	if err != nil {
-		return nil, 0, 0, err
-	}
-
-	start := time.Now()
-	var trees []*TreeNode
-	var nodesVisited int
-
-	if useBFS {
-		trees, nodesVisited = findRecipesBFS(node, n)
-	} else {
-		trees, nodesVisited = findRecipesDFS(node, n)
-	}
-
-	duration := time.Since(start)
-	result := mergeTrees(trees)
-	return result, nodesVisited, duration, nil
-}
-
 func (ec *ElementController) GetAllElementsTiers() (map[string][]string, error) {
-    elements := elementsModel.GetInstance().GetAllElements()
+	elements := elementsModel.GetInstance().GetAllElements()
 
-    tierGroups := make(map[string][]string)
-    
-    for _, element := range elements {
-        tierStr := strconv.Itoa(element.Tier)
+	tierGroups := make(map[string][]string)
+	
+	for _, element := range elements {
+		tierStr := strconv.Itoa(element.Tier)
 		tierGroups[tierStr] = append(tierGroups[tierStr], element.Name)
-    }
-
-    for _, elements := range tierGroups {
-        sort.Strings(elements)
-    }
-
-    return tierGroups, nil
-}
-
-func (ec *ElementController) getElementNodeCached(name string) (*elementsModel.ElementNode, error) {
-	// Use cached node if available
-	if node, ok := ec.nodeCache.Load(name); ok {
-		return node.(*elementsModel.ElementNode), nil
 	}
 
-	// Otherwise get from model and cache it
-	node, err := elementsModel.GetInstance().GetElementNode(name)
-	if err != nil {
-		return nil, err
+	for _, elements := range tierGroups {
+		sort.Strings(elements)
 	}
 
-	ec.nodeCache.Store(name, node)
-	return node, nil
+	return tierGroups, nil
 }
 
-func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNode, int) {
+func StreamRecipesDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
+	start := time.Now()
+	trees, nodesVisited := streamDFS(target, maxCount, resultChan)
+	duration := time.Since(start)
+	return trees, nodesVisited, duration
+}
+
+func StreamRecipesBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
+	start := time.Now()
+	trees, nodesVisited := streamBFS(target, maxCount, resultChan)
+	duration := time.Since(start)
+	return trees, nodesVisited, duration
+}
+
+func MergeTreesFromChannel(treeChan <-chan *TreeNode) *TreeNode {
+	var trees []*TreeNode
+	for tree := range treeChan {
+		trees = append(trees, tree)
+	}
+	return mergeTrees(trees)
+}
+
+func streamDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
 	type Frame struct {
 		Tree  *TreeNode
 		Stack []*TreeNode
@@ -94,23 +82,20 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 	var (
 		resultsMu    sync.Mutex
 		seen         sync.Map
-		results      = make([]*TreeNode, 0, maxCount) // Pre-allocate with capacity
+		results      = make([]*TreeNode, 0, maxCount)
 		nodesVisited int64
 		wg           sync.WaitGroup
-		resultChan   = make(chan *TreeNode, maxCount*2) // Larger buffer to reduce blocking
+		localChan    = make(chan *TreeNode, maxCount*2) 
 	)
 
-	// Use a buffered channel for work distribution
 	maxWorkers := runtime.GOMAXPROCS(0) * 2
 	workChan := make(chan elementsModel.ElementRelation, maxWorkers*4)
 
-	// Worker goroutines pool
 	for i := 0; i < maxWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			// Reusable working memory
 			localStack := make([]Frame, 0, 100)
 
 			for rel := range workChan {
@@ -127,7 +112,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					},
 				}
 
-				// Clear and reuse localStack
 				localStack = localStack[:0]
 				localStack = append(localStack, Frame{Tree: tree, Stack: []*TreeNode{tree}})
 
@@ -140,7 +124,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						break
 					}
 
-					// Pop from stack
 					lastIdx := len(localStack) - 1
 					frame := localStack[lastIdx]
 					localStack = localStack[:lastIdx]
@@ -149,12 +132,13 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						key := treeKey(frame.Tree)
 						if _, loaded := seen.LoadOrStore(key, true); !loaded {
 							select {
-							case resultChan <- frame.Tree:
+							case localChan <- frame.Tree:
+								resultChan <- frame.Tree
 							default:
-								// If channel is full, try direct insertion
 								resultsMu.Lock()
 								if len(results) < maxCount {
 									results = append(results, frame.Tree)
+									resultChan <- frame.Tree
 								}
 								resultsMu.Unlock()
 							}
@@ -162,7 +146,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						continue
 					}
 
-					// Pop from frame stack
 					lastIdx = len(frame.Stack) - 1
 					curr := frame.Stack[lastIdx]
 					rest := frame.Stack[:lastIdx]
@@ -176,7 +159,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					leftNode, _ := elementsModel.GetInstance().GetElementNode(curr.Ingredients[0].Element)
 					rightNode, _ := elementsModel.GetInstance().GetElementNode(curr.Ingredients[1].Element)
 
-					// Fast path for base elements
 					if (leftNode == nil || leftNode.Element.Tier == 0) &&
 						(rightNode == nil || rightNode.Element.Tier == 0) {
 						localStack = append(localStack, Frame{Tree: frame.Tree, Stack: rest})
@@ -186,7 +168,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					leftTrees := expandIngredient(leftNode)
 					rightTrees := expandIngredient(rightNode)
 
-					// Pre-allocate estimated capacity
 					newFrames := make([]Frame, 0, len(leftTrees)*len(rightTrees))
 
 					for _, l := range leftTrees {
@@ -199,7 +180,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 							ptr.Ingredients[0] = l
 							ptr.Ingredients[1] = r
 
-							// Create new stack with calculated capacity
 							newStack := make([]*TreeNode, len(rest)+2)
 							copy(newStack, append([]*TreeNode{l, r}, rest...))
 
@@ -210,7 +190,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						}
 					}
 
-					// Add frames in reverse order for depth-first search
 					for i := len(newFrames) - 1; i >= 0; i-- {
 						localStack = append(localStack, newFrames[i])
 					}
@@ -219,10 +198,9 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 		}()
 	}
 
-	// Collector goroutine
 	done := make(chan struct{})
 	go func() {
-		for tree := range resultChan {
+		for tree := range localChan {
 			resultsMu.Lock()
 			if len(results) < maxCount {
 				results = append(results, tree)
@@ -232,7 +210,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 		close(done)
 	}()
 
-	// Distribute initial work
 	go func() {
 		for _, rel := range target.Parents {
 			workChan <- *rel
@@ -241,10 +218,9 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 	}()
 
 	wg.Wait()
-	close(resultChan)
+	close(localChan)
 	<-done
 
-	// Sort results by complexity (optional - helps with deterministic output)
 	sort.Slice(results, func(i, j int) bool {
 		return treeComplexity(results[i]) < treeComplexity(results[j])
 	})
@@ -252,7 +228,6 @@ func findRecipesDFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 	return results, int(nodesVisited)
 }
 
-// Calculate tree complexity for sorting
 func treeComplexity(node *TreeNode) int {
 	if node == nil {
 		return 0
@@ -265,7 +240,6 @@ func treeComplexity(node *TreeNode) int {
 	return count
 }
 
-// Optimized expandIngredient with context-aware result caching
 var expandCache sync.Map
 
 func expandIngredient(node *elementsModel.ElementNode) []*TreeNode {
@@ -273,27 +247,21 @@ func expandIngredient(node *elementsModel.ElementNode) []*TreeNode {
 		return nil
 	}
 
-	// Check if this node has been expanded before for a particular parent
 	if node.Element.Tier == 0 {
-		// For base elements, always return them (no expansion needed)
 		return []*TreeNode{{Element: node.Element.Name}}
 	}
 
-	// Use the parent's name and the element's name as a unique key for caching
-	cacheKey := fmt.Sprintf("%s-%s", node.Element.Name, node.Element.Tier)
+	cacheKey := fmt.Sprintf("%s-%s", node.Element.Name, strconv.Itoa(node.Element.Tier))
 	if cached, found := expandCache.Load(cacheKey); found {
-		// Return the cached result if it's already expanded for this context
 		return cached.([]*TreeNode)
 	}
 
-	// If not cached, expand the node and store it
 	out := make([]*TreeNode, 0, len(node.Parents))
 	for _, rel := range node.Parents {
 		if len(rel.Recipe.Ingredients) != 2 {
 			continue
 		}
 
-		// Expand node's ingredients and store them in the result
 		out = append(out, &TreeNode{
 			Element: node.Element.Name,
 			Recipe:  rel.Recipe.Ingredients,
@@ -304,13 +272,11 @@ func expandIngredient(node *elementsModel.ElementNode) []*TreeNode {
 		})
 	}
 
-	// Store the result in the cache with the context (i.e., parent-child relationship)
 	expandCache.Store(cacheKey, out)
 
 	return out
 }
 
-// Optimized cloneTree with preallocated slice
 func cloneTree(n *TreeNode) *TreeNode {
 	if n == nil {
 		return nil
@@ -322,7 +288,6 @@ func cloneTree(n *TreeNode) *TreeNode {
 		Ingredients: make([]*TreeNode, len(n.Ingredients)),
 	}
 
-	// Fast copy for small slices
 	if len(n.Recipe) > 0 {
 		copy.Recipe[0] = n.Recipe[0]
 		if len(n.Recipe) > 1 {
@@ -336,7 +301,6 @@ func cloneTree(n *TreeNode) *TreeNode {
 	return copy
 }
 
-// Optimized findNodeByElement with early stopping
 func findNodeByElement(n *TreeNode, target string) *TreeNode {
 	if n == nil {
 		return nil
@@ -346,7 +310,6 @@ func findNodeByElement(n *TreeNode, target string) *TreeNode {
 		return n
 	}
 
-	// Use a pre-allocated stack with reasonable capacity
 	stack := make([]*TreeNode, 0, 32)
 	stack = append(stack, n.Ingredients...)
 
@@ -363,7 +326,6 @@ func findNodeByElement(n *TreeNode, target string) *TreeNode {
 			return cur
 		}
 
-		// Append in reverse for depth-first behavior
 		for i := len(cur.Ingredients) - 1; i >= 0; i-- {
 			stack = append(stack, cur.Ingredients[i])
 		}
@@ -371,7 +333,6 @@ func findNodeByElement(n *TreeNode, target string) *TreeNode {
 	return nil
 }
 
-// Optimized treeKey with string builder
 func treeKey(n *TreeNode) string {
 	if n == nil {
 		return ""
@@ -381,7 +342,6 @@ func treeKey(n *TreeNode) string {
 		return n.Element
 	}
 
-	// Pre-calculate sizes to avoid reallocations
 	var sb strings.Builder
 	sb.Grow(len(n.Element) + len(n.Recipe[0]) + len(n.Recipe[1]) + 20)
 
@@ -392,7 +352,7 @@ func treeKey(n *TreeNode) string {
 	sb.WriteString(n.Recipe[1])
 	sb.WriteString("](")
 
-	left := treeKey(n.Ingredients[0])
+	left := treeKey(n.Ingredients[0])	
 	sb.WriteString(left)
 	sb.WriteString(",")
 
@@ -403,32 +363,29 @@ func treeKey(n *TreeNode) string {
 	return sb.String()
 }
 
-func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNode, int) {
+func streamBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
 	type Frame struct {
 		Tree  *TreeNode
 		Queue []*TreeNode
 	}
 
 	var (
-		results      = make([]*TreeNode, 0, maxCount) // Pre-allocate with capacity
+		results      = make([]*TreeNode, 0, maxCount)
 		resultsMu    sync.Mutex
 		nodesVisited int64
 		wg           sync.WaitGroup
 		seen         sync.Map
-		resultChan   = make(chan *TreeNode, maxCount*2) // Larger buffer
+		localChan    = make(chan *TreeNode, maxCount*2) 
 	)
 
-	// Use a worker pool pattern
 	maxWorkers := runtime.GOMAXPROCS(0)
 	workChan := make(chan elementsModel.ElementRelation, maxWorkers*2)
 
-	// Start worker pool
 	for i := 0; i < maxWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			// Local queue for each worker
 			localQueue := make([]Frame, 0, 100)
 
 			for rel := range workChan {
@@ -445,7 +402,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					},
 				}
 
-				// Reset local queue
 				localQueue = localQueue[:0]
 				localQueue = append(localQueue, Frame{Tree: tree, Queue: []*TreeNode{tree}})
 
@@ -458,7 +414,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						break
 					}
 
-					// Process first item in queue (BFS)
 					frame := localQueue[0]
 					localQueue = localQueue[1:]
 
@@ -466,12 +421,13 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						key := treeKey(frame.Tree)
 						if _, loaded := seen.LoadOrStore(key, true); !loaded {
 							select {
-							case resultChan <- frame.Tree:
+							case localChan <- frame.Tree:
+								resultChan <- frame.Tree
 							default:
-								// Direct insertion if channel is full
 								resultsMu.Lock()
 								if len(results) < maxCount {
 									results = append(results, frame.Tree)
+									resultChan <- frame.Tree
 								}
 								resultsMu.Unlock()
 							}
@@ -479,7 +435,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 						continue
 					}
 
-					// Extract first item from queue
 					curr := frame.Queue[0]
 					rest := frame.Queue[1:]
 					atomic.AddInt64(&nodesVisited, 1)
@@ -492,7 +447,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					leftNode, _ := elementsModel.GetInstance().GetElementNode(curr.Ingredients[0].Element)
 					rightNode, _ := elementsModel.GetInstance().GetElementNode(curr.Ingredients[1].Element)
 
-					// Fast path for base elements
 					if (leftNode == nil || leftNode.Element.Tier == 0) &&
 						(rightNode == nil || rightNode.Element.Tier == 0) {
 						localQueue = append(localQueue, Frame{Tree: frame.Tree, Queue: rest})
@@ -502,7 +456,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 					leftTrees := expandIngredient(leftNode)
 					rightTrees := expandIngredient(rightNode)
 
-					// Pre-calculate capacity
 					newFrames := make([]Frame, 0, len(leftTrees)*len(rightTrees))
 
 					for _, l := range leftTrees {
@@ -515,7 +468,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 							ptr.Ingredients[0] = l
 							ptr.Ingredients[1] = r
 
-							// Create new queue with calculated capacity
 							newQueue := make([]*TreeNode, 0, len(rest)+2)
 							newQueue = append(newQueue, rest...)
 							newQueue = append(newQueue, l, r)
@@ -524,20 +476,19 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 								Tree:  clone,
 								Queue: newQueue,
 							})
+							resultChan <- clone
 						}
 					}
 
-					// Append all new frames to queue
 					localQueue = append(localQueue, newFrames...)
 				}
 			}
 		}()
 	}
 
-	// Start collector goroutine
 	done := make(chan struct{})
 	go func() {
-		for tree := range resultChan {
+		for tree := range localChan {
 			resultsMu.Lock()
 			if len(results) < maxCount {
 				results = append(results, tree)
@@ -547,7 +498,6 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 		close(done)
 	}()
 
-	// Distribute initial work
 	go func() {
 		for _, rel := range target.Parents {
 			workChan <- *rel
@@ -556,17 +506,10 @@ func findRecipesBFS(target *elementsModel.ElementNode, maxCount int) ([]*TreeNod
 	}()
 
 	wg.Wait()
-	close(resultChan)
+	close(localChan)
 	<-done
 
 	return results, int(nodesVisited)
-}
-
-// Pool for reusing TreeNode slices
-var treeNodePool = sync.Pool{
-	New: func() interface{} {
-		return make([]*TreeNode, 0, 16)
-	},
 }
 
 func mergeTrees(trees []*TreeNode) *TreeNode {
@@ -574,7 +517,6 @@ func mergeTrees(trees []*TreeNode) *TreeNode {
 		return nil
 	}
 
-	// Take a copy to avoid modifying original slice
 	ingredients := make([]*TreeNode, len(trees))
 	copy(ingredients, trees)
 

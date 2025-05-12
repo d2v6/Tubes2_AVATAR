@@ -17,11 +17,14 @@ func main() {
         log.Fatalf("Cannot get working directory: %v", err)
     }
 
+	// filepath:=filepath.Join(cwd, "src","backend","data", "elements.json")
+	filepath:=filepath.Join(cwd, "data", "elements.json")
+
 	log.Println("Scraping data...")
-	scraper.Scrape(filepath.Join(cwd, "src","backend","data", "elements.json"))
+	scraper.Scrape(filepath)
 
 	log.Println("Initializing elements model...")
-	errr := elementsModel.GetInstance().Initialize(filepath.Join(cwd, "src","backend","data", "elements.json"))
+	errr := elementsModel.GetInstance().Initialize(filepath)
 	if errr != nil {
 		log.Fatalf("error initializing elements service: %v", errr)
 	}
