@@ -53,30 +53,26 @@ func HandleTreeWebSocket(controller *elementsController.ElementController) http.
 
 		treeChan := make(chan *elementsController.TreeNode, req.Count)
 
-		start := time.Now()
-
 		var trees []*elementsController.TreeNode
 		var nodesVisited int
+		var duration time.Duration
 
 		go func() {
 			if req.UseBFS {
-				trees, nodesVisited, _ = elementsController.StreamRecipesBFS(node, req.Count, treeChan)
+				trees, nodesVisited, duration = elementsController.StreamRecipesBFS(node, req.Count, treeChan)
 			} else {
-				trees, nodesVisited, _ = elementsController.StreamRecipesDFS(node, req.Count, treeChan)
+				trees, nodesVisited, duration = elementsController.StreamRecipesDFS(node, req.Count, treeChan)
 			}
 			close(treeChan)
 		}()
 
 		var delay time.Duration = time.Duration(req.Delay) * time.Millisecond
 		
-		duration := time.Since(start)
-		log.Println("Duration: ", duration)
-		
 		for tree := range treeChan {
 			time.Sleep(delay) 
 
-			log.Println("Debug: Printing tree structure:")
-			elementsController.PrintRecipeTree(tree, "", true)
+			// log.Println("Debug: Printing tree structure:")
+			// elementsController.PrintRecipeTree(tree, "", true)
 
 			msg := TreeMessage{
 				Tree:         tree,
