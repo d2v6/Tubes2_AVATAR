@@ -59,9 +59,9 @@ func HandleTreeWebSocket(controller *elementsController.ElementController) http.
 
 		go func() {
 			if req.UseBFS {
-				trees, nodesVisited, duration = elementsController.StreamRecipesBFS(node, req.Count, treeChan)
+				trees, nodesVisited, duration = elementsController.StartBFS(node, req.Count, treeChan)
 			} else {
-				trees, nodesVisited, duration = elementsController.StreamRecipesDFS(node, req.Count, treeChan)
+				trees, nodesVisited, duration = elementsController.StartDFS(node, req.Count, treeChan)
 			}
 			close(treeChan)
 		}()
@@ -97,7 +97,7 @@ func HandleTreeWebSocket(controller *elementsController.ElementController) http.
 		}
 		close(treeChanForMerge)
 
-		finalTree := elementsController.MergeTreesFromChannel(treeChanForMerge)
+		finalTree := elementsController.MergeTrees(treeChanForMerge)
 		if finalTree == nil && len(trees) > 0 {
 			finalTree = &elementsController.TreeNode{
 				Element:     "Root",

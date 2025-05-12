@@ -51,29 +51,40 @@ func (ec *ElementController) GetAllElementsTiers() (map[string][]string, error) 
 	return tierGroups, nil
 }
 
-func StreamRecipesDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
+func StartDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
 	start := time.Now()
-	trees, nodesVisited := streamDFS(target, maxCount, resultChan)
+	trees, nodesVisited := dfs(target, maxCount, resultChan)
 	duration := time.Since(start)
 	return trees, nodesVisited, duration
 }
 
-func StreamRecipesBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
+func StartBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int, time.Duration) {
 	start := time.Now()
-	trees, nodesVisited := streamBFS(target, maxCount, resultChan)
+	trees, nodesVisited := bfs(target, maxCount, resultChan)
 	duration := time.Since(start)
 	return trees, nodesVisited, duration
 }
 
-func MergeTreesFromChannel(treeChan <-chan *TreeNode) *TreeNode {
+func MergeTrees(treeChan <-chan *TreeNode) *TreeNode {
 	var trees []*TreeNode
 	for tree := range treeChan {
 		trees = append(trees, tree)
 	}
-	return mergeTrees(trees)
+	if len(trees) == 0 {
+		return nil
+	}
+
+	ingredients := make([]*TreeNode, len(trees))
+	copy(ingredients, trees)
+
+	return &TreeNode{
+		Element:     "Root",
+		Ingredients: ingredients,
+		Recipe:      nil,
+	}
 }
 
-func streamDFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
+func dfs(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
 	type Frame struct {
 		Tree  *TreeNode
 		Stack []*TreeNode
@@ -364,7 +375,7 @@ func treeKey(n *TreeNode) string {
 	return sb.String()
 }
 
-func streamBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
+func bfs(target *elementsModel.ElementNode, maxCount int, resultChan chan<- *TreeNode) ([]*TreeNode, int) {
 	type Frame struct {
 		Tree  *TreeNode
 		Queue []*TreeNode
@@ -513,20 +524,6 @@ func streamBFS(target *elementsModel.ElementNode, maxCount int, resultChan chan<
 	return results, int(nodesVisited)
 }
 
-func mergeTrees(trees []*TreeNode) *TreeNode {
-	if len(trees) == 0 {
-		return nil
-	}
-
-	ingredients := make([]*TreeNode, len(trees))
-	copy(ingredients, trees)
-
-	return &TreeNode{
-		Element:     "Root",
-		Ingredients: ingredients,
-		Recipe:      nil,
-	}
-}
 
 func PrintRecipeTree(tree *TreeNode, prefix string, isLast bool) {
 	if tree == nil {
