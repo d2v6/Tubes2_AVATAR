@@ -210,7 +210,7 @@ function App() {
           <button
             onClick={() => {
               if (!count) setCount(1);
-              if (!wsDelay) setWsDelay(100);
+              if (!wsDelay) setWsDelay(0);
               handleSearch();
             }}
             className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"

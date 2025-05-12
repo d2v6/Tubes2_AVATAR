@@ -33,27 +33,3 @@ func main() {
 	router := routes.InitRoutes()
 	log.Fatal(http.ListenAndServe(":4003", router))
 }
-
-
-	// package main
-
-	// import (
-	// 	elementsController "backend/controllers"
-	// 	elementsModel "backend/models"
-	// 	"backend/scraper"
-	// 	"fmt"
-	// )
-
-	// func main() {
-	// 	filePath := "data/elements.json"
-	// 	target := "Barn"
-	// 	n := 10
-	// 	useBFS := true
-
-
-	// 	fmt.Println("Recipe Tree:")
-	// 	elementsController.PrintRecipeTree(tree, "", true)
-
-	// 	fmt.Printf("\nNodes visited: %d\n", visited)
-	// 	fmt.Printf("Duration: %s\n", duration)
-	// }
