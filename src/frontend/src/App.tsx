@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Tree } from "react-tree-graph";
-import "react-tree-graph/dist/style.css";
+import ReactFlow, { type Node, type Edge, Background, Controls, MiniMap, useNodesState, useEdgesState, Position } from "reactflow";
+import "reactflow/dist/style.css";
 import "./App.css";
 
 type RecipeInfo = {
@@ -13,33 +13,12 @@ type TreeNode = {
   recipes: RecipeInfo[];
 };
 
-type TreeGraphNode = {
-  name: string;
-  children: TreeGraphNode[];
-};
-
 type TreeWebSocketMessage = {
   tree: TreeNode;
   nodesVisited: number;
   duration?: string;
   done: boolean;
 };
-
-function getTreeSize(node: TreeGraphNode): { depth: number; maxBreadth: number } {
-  let maxDepth = 0;
-  let maxBreadth = 0;
-
-  function traverse(n: TreeGraphNode, depth: number) {
-    if (depth > maxDepth) maxDepth = depth;
-    if (n.children && n.children.length > maxBreadth) {
-      maxBreadth = n.children.length;
-    }
-    n.children?.forEach((child) => traverse(child, depth + 1));
-  }
-
-  traverse(node, 1);
-  return { depth: maxDepth, maxBreadth };
-}
 
 function App() {
   const [recipeTree, setRecipeTree] = useState<TreeNode | null>(null);
@@ -48,20 +27,75 @@ function App() {
   const [target, setTarget] = useState("Metal");
   const [method, setMethod] = useState("bfs");
   const [count, setCount] = useState(2);
-  const [treeData, setTreeData] = useState<TreeGraphNode | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [nodesVisited, setNodesVisited] = useState<number | null>(null);
   const [timeTaken, setTimeTaken] = useState<string | null>(null);
-  const [wsDelay, setWsDelay] = useState(500);
+  const [wsDelay, setWsDelay] = useState(100);
 
   const wsRef = useRef<WebSocket | null>(null);
 
   const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
 
+  const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
+    const nodeId = `${treeNode.element}-${depth}-${xOffset}`;
+    const nodeSpacingX = 200;
+    const nodeSpacingY = 100;
+
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+
+    const childKeys = Object.keys(treeNode.ingredients || {});
+    const childResults: { nodes: Node[]; edges: Edge[]; width: number }[] = [];
+
+    let totalChildWidth = 0;
+    for (const key of childKeys) {
+      const child = treeNode.ingredients[key];
+      const result = convertToReactFlowFormat(child, nodeId, depth + 1, xOffset + totalChildWidth);
+      childResults.push(result);
+      totalChildWidth += result.width;
+    }
+
+    if (totalChildWidth === 0) {
+      totalChildWidth = 1;
+    }
+
+    const centerX = xOffset + totalChildWidth / 2;
+
+    nodes.push({
+      id: nodeId,
+      data: { label: treeNode.element },
+      position: {
+        x: centerX * nodeSpacingX,
+        y: depth * nodeSpacingY,
+      },
+      type: "default",
+      targetPosition: Position.Top,
+      sourcePosition: Position.Bottom,
+    });
+
+    if (parentId) {
+      edges.push({
+        id: `${parentId}-${nodeId}`,
+        source: parentId,
+        target: nodeId,
+      });
+    }
+
+    for (const result of childResults) {
+      nodes.push(...result.nodes);
+      edges.push(...result.edges);
+    }
+
+    return { nodes, edges, width: totalChildWidth };
+  }, []);
+
   const fetchRecipes = () => {
     setLoading(true);
     setError(null);
-    setTreeData(null);
     setRecipeTree(null);
+    setNodes([]);
+    setEdges([]);
 
     if (wsRef.current) {
       wsRef.current.close();
@@ -89,7 +123,6 @@ function App() {
           console.log("Data:", data);
 
           if (data.tree) {
-            setRecipeTree(null);
             setRecipeTree(data.tree);
           }
 
@@ -103,7 +136,6 @@ function App() {
 
           if (data.done) {
             setLoading(false);
-
             ws.close();
             wsRef.current = null;
           }
@@ -126,22 +158,13 @@ function App() {
     };
   };
 
-  const convertToTreeGraphFormat = useCallback((node: TreeNode): TreeGraphNode => {
-    const children: TreeGraphNode[] = node.ingredients ? Object.values(node.ingredients).map(convertToTreeGraphFormat) : [];
-
-    return {
-      name: node.element,
-      children: children,
-    };
-  }, []);
-
   useEffect(() => {
     if (recipeTree) {
-      setTreeData(null);
-      const data = convertToTreeGraphFormat(recipeTree);
-      setTreeData(data);
+      const { nodes: flowNodes, edges: flowEdges } = convertToReactFlowFormat(recipeTree);
+      setNodes(flowNodes);
+      setEdges(flowEdges);
     }
-  }, [recipeTree, convertToTreeGraphFormat]);
+  }, [recipeTree, convertToReactFlowFormat, setNodes, setEdges]);
 
   useEffect(() => {
     fetchRecipes();
@@ -187,7 +210,7 @@ function App() {
           <button
             onClick={() => {
               if (!count) setCount(1);
-              if (!wsDelay) setWsDelay(500);
+              if (!wsDelay) setWsDelay(100);
               handleSearch();
             }}
             className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
@@ -198,24 +221,22 @@ function App() {
         </div>
       </div>
 
-      <div className="border border-gray-300 rounded-lg overflow-hidden">
+      <div className="rounded-lg overflow-hidden">
         {error && <p className="p-4 text-center text-red-500">Error: {error}</p>}
         {!error && !recipeTree && <p className="p-4 text-center">No recipes found for "{target}"</p>}
-        {recipeTree && treeData && (
+        {recipeTree && (
           <div className="p-4">
             <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.element}</h2>
             <div className="mb-4">
               <p>Nodes Visited: {nodesVisited}</p>
               <p>Time Taken: {timeTaken}</p>
             </div>
-            <div id="treeWrapper" className="overflow-auto border p-4" style={{ width: "100%", height: "600px" }}>
-              {treeData &&
-                (() => {
-                  const { depth, maxBreadth } = getTreeSize(treeData);
-                  const height = Math.max(300, depth * 150);
-                  const width = Math.max(600, maxBreadth * 300);
-                  return <Tree data={treeData} height={height} width={width} svgProps={{ className: "custom" }} />;
-                })()}
+            <div style={{ width: "100%", height: "600px", border: "1px solid #ddd" }}>
+              <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} defaultViewport={{ x: 0, y: 10, zoom: 0.7 }}>
+                <Background />
+                <Controls />
+                <MiniMap />
+              </ReactFlow>
             </div>
           </div>
         )}
