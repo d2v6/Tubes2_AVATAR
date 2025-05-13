@@ -2,7 +2,6 @@ package websocket
 
 import (
 	elementsController "backend/controllers"
-	elementsModel "backend/models"
 	"log"
 	"net/http"
 	"time"
@@ -44,38 +43,28 @@ func HandleTreeWebSocket(controller *elementsController.ElementController) http.
 			return
 		}
 
-		node, err := elementsModel.GetInstance().GetElementNode(req.Target)
-		if err != nil {
-			log.Println("Invalid target element:", err)
-			conn.WriteMessage(websocket.TextMessage, []byte("Invalid element"))
-			return
-		}
-
 		treeChan := make(chan *elementsController.TreeNode, req.Count)
 
-		var trees []*elementsController.TreeNode
+		var tree *elementsController.TreeNode
 		var nodesVisited int
 		var duration time.Duration
 
 		go func() {
 			if req.UseBFS {
-				trees, nodesVisited, duration = elementsController.StreamRecipesBFS(node, req.Count, treeChan)
+				tree, duration = elementsController.StartBFS(req.Target, req.Count, treeChan)
 			} else {
-				trees, nodesVisited, duration = elementsController.StreamRecipesDFS(node, req.Count, treeChan)
+				tree, duration = elementsController.StartDFS(req.Target, req.Count, treeChan)
 			}
 			close(treeChan)
 		}()
 
 		var delay time.Duration = time.Duration(req.Delay) * time.Millisecond
 		
-		for tree := range treeChan {
-			time.Sleep(delay) 
-
-			// log.Println("Debug: Printing tree structure:")
-			// elementsController.PrintRecipeTree(tree, "", true)
+		for intermediateTree := range treeChan {
+			time.Sleep(delay)
 
 			msg := TreeMessage{
-				Tree:         tree,
+				Tree:         intermediateTree,
 				NodesVisited: nodesVisited,
 				Done:         false,
 			}
@@ -85,37 +74,13 @@ func HandleTreeWebSocket(controller *elementsController.ElementController) http.
 				return
 			}
 		}
-		
-		// for _, tree := range trees {
-		// 	log.Println("Tree:")
-		// 	elementsController.PrintRecipeTree(tree, "", true)
-		// }
-
-		treeChanForMerge := make(chan *elementsController.TreeNode, len(trees))
-		for _, tree := range trees {
-			treeChanForMerge <- tree
-		}
-		close(treeChanForMerge)
-
-		finalTree := elementsController.MergeTreesFromChannel(treeChanForMerge)
-		if finalTree == nil && len(trees) > 0 {
-			finalTree = &elementsController.TreeNode{
-				Element:     "Root",
-				Ingredients: trees,
-			}
-		}
 
 		finalMsg := TreeMessage{
-			Tree:         finalTree,
+			Tree:         tree,
 			NodesVisited: nodesVisited,
 			Duration:     duration,
 			Done:         true,
 		}
-
-		// if finalTree != nil {
-		// 	log.Println("Debug: Printing final merged tree structure:")
-		// 	elementsController.PrintRecipeTree(finalTree, "", true)
-		// }
 
 		if err := conn.WriteJSON(finalMsg); err != nil {
 			log.Println("Error sending final result:", err)

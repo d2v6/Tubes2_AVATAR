@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 )
 
 type ElementController struct {
@@ -42,27 +43,29 @@ func (ec *ElementController) GetAllElementsTiers() (map[string][]string, error) 
 	return tierGroups, nil
 }
 
-func (ec *ElementController) StartDFS(targetName string, n int) *TreeNode {
+func StartDFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, time.Duration) {
+	start := time.Now()
 	node, err := elementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 
-	trees := dfs(node, int64(n))
-	return mergeTree(trees)
+	trees := dfs(node, int64(n), treeChan)
+	return mergeTree(trees), time.Since(start)
 }
 
-func (ec *ElementController) StartBFS(targetName string, n int) *TreeNode {
+func StartBFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, time.Duration) {
+	start := time.Now()
 	node, err := elementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
-		return nil
+		return nil, 0
 	}
 
-	trees := bfs(node, int64(n))
-	return mergeTree(trees)
+	trees := bfs(node, int64(n), treeChan)
+	return mergeTree(trees), time.Since(start)
 }
 
-func dfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
+func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []*TreeNode {
 	if target == nil {
 		return nil
 	}
@@ -77,8 +80,8 @@ func dfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
 	var results []*TreeNode
 
 	for _, recipe := range target.Parents {
-		leftTrees := dfs(recipe.SourceNodes[0], n)
-		rightTrees := dfs(recipe.SourceNodes[1], n)
+		leftTrees := dfs(recipe.SourceNodes[0], n, treeChan)
+		rightTrees := dfs(recipe.SourceNodes[1], n, treeChan)
 
 		for _, left := range leftTrees {
 			for _, right := range rightTrees {
@@ -86,6 +89,8 @@ func dfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
 					Name:   target.Element.Name,
 					Recipe: []*TreeNode{left, right},
 				}
+
+				treeChan <- node
 
 				results = append(results, node)
 				if len(results) >= int(n) {
@@ -104,7 +109,7 @@ func dfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
 	return results
 }
 
-func bfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
+func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []*TreeNode {
 	if target == nil {
 		return nil
 	}
@@ -150,9 +155,13 @@ func bfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
 			}
 
 			if currentNode.Element.Tier == 0 || len(currentNode.Parents) == 0 {
-				elementToTree[currentNode.Element.Name] = []*TreeNode{{
+				tree := &TreeNode{
 					Name: currentNode.Element.Name,
-				}}
+				}
+			
+				treeChan <- tree
+			
+				elementToTree[currentNode.Element.Name] = []*TreeNode{tree}
 				processedElements[currentNode.Element.Name] = true
 			}
 
@@ -186,6 +195,9 @@ func bfs(target *elementsModel.ElementNode, n int64) []*TreeNode {
 							Name:   currentNode.Element.Name,
 							Recipe: []*TreeNode{left, right},
 						}
+
+						treeChan <- node
+
 						trees = append(trees, node)
 					}
 				}
@@ -240,7 +252,6 @@ func PrintRecipeTree(tree *TreeNode, prefix string, isLast bool) {
 		connector = "└── "
 	}
 
-	// Print the current node's name and recipe
 	fmt.Printf("%s%s%s", prefix, connector, tree.Name)
 
 	// Print the recipe if there are exactly 2 ingredients (left and right)
@@ -257,7 +268,6 @@ func PrintRecipeTree(tree *TreeNode, prefix string, isLast bool) {
 		newPrefix += "│   "
 	}
 
-	// Recursively print all child nodes (ingredients)
 	for i, child := range tree.Recipe {
 		PrintRecipeTree(child, newPrefix, i == len(tree.Recipe)-1)
 	}
