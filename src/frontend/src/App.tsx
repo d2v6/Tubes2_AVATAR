@@ -39,7 +39,7 @@ function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
+  // const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
 
   const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
     const nodeId = `${treeNode.Name}-${depth}-${xOffset}`;
@@ -127,8 +127,8 @@ function App() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-
-    const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`);
+    const ws = new WebSocket("wss://https://avatar.kirisame.jp.net/ws/tree");
+    // const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`); // for local
     wsRef.current = ws;
 
     ws.onopen = () => {
