@@ -105,8 +105,8 @@ function App() {
     setEdges([]);
 
     try {
-      const response = await fetch(`http://localhost:4003/api/elements/${target}`); //for local
-      // const response = await fetch(`/api/elements/${target}`);
+      // const response = await fetch(`http://localhost:4003/api/elements/${target}`); //for local
+      const response = await fetch(`/api/elements/${target}`);
       if (!response.ok) {
         throw new Error("Failed to fetch target element");
       }
@@ -127,8 +127,8 @@ function App() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-    // const ws = new WebSocket("wss://https://avatar.kirisame.jp.net/ws/tree");
-    const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`); // for local
+    const ws = new WebSocket("wss://https://avatar.kirisame.jp.net/ws/tree");
+    // const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`); // for local
     wsRef.current = ws;
 
     ws.onopen = () => {
