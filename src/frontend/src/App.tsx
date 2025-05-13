@@ -127,7 +127,7 @@ function App() {
     if (wsRef.current) {
       wsRef.current.close();
     }
-    const ws = new WebSocket("wss://https://avatar.kirisame.jp.net/ws/tree");
+    const ws = new WebSocket("wss://avatar.kirisame.jp.net/ws/tree");
     // const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`); // for local
     wsRef.current = ws;
 
