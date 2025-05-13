@@ -14,8 +14,8 @@ function TierList() {
     const fetchTierList = async () => {
       try {
         setLoading(true);
-        // const response = await fetch(`https://localhost:4003/api/tiers`); //for local
-        const response = await fetch(`/api/tiers`);
+        const response = await fetch(`https://localhost:4003/api/tiers`); //for local
+        // const response = await fetch(`/api/tiers`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch tier list: ${response.status}`);
