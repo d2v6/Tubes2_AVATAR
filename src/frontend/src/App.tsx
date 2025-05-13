@@ -189,9 +189,8 @@ function App() {
           <input
             type="number"
             min="1"
-            max="10"
             value={count || ""}
-            onChange={(e) => setCount(e.target.value === "" ? 0 : Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
+            onChange={(e) => setCount(e.target.value === "" ? 0 : parseInt(e.target.value))}
             placeholder="Max recipes"
             className="border p-2 rounded w-24"
           />
@@ -225,7 +224,7 @@ function App() {
             <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.Recipe && recipeTree.Recipe[0]?.Name ? recipeTree.Recipe[0].Name : ""}</h2>
             <div className="mb-4">
               <p>Nodes Visited: {nodesVisited}</p>
-              <p>Time Taken: {timeTaken}</p>
+              <p>Time Taken: {timeTaken || "0ms"}</p>
             </div>
             <div style={{ width: "100%", height: "600px", border: "1px solid #ddd" }}>
               <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} defaultViewport={{ x: 0, y: 10, zoom: 0.7 }}>
