@@ -89,6 +89,7 @@ function App() {
     setLoading(true);
     setError(null);
     setRecipeTree(null);
+    setNodesVisited(null);
     setTimeTaken(null);
     setNodes([]);
     setEdges([]);
