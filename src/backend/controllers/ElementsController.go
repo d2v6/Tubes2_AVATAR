@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -78,34 +79,47 @@ func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 	}
 
 	var results []*TreeNode
+	var resultsMutex sync.Mutex
+	var wg sync.WaitGroup
 
 	for _, recipe := range target.Parents {
-		leftTrees := dfs(recipe.SourceNodes[0], n, treeChan)
-		rightTrees := dfs(recipe.SourceNodes[1], n, treeChan)
+		wg.Add(1)
+		go func(recipe *elementsModel.ElementRelation) {
+			defer wg.Done()
 
-		for _, left := range leftTrees {
-			for _, right := range rightTrees {
-				node := &TreeNode{
-					Name:   target.Element.Name,
-					Recipe: []*TreeNode{left, right},
-				}
+			leftTrees := dfs(recipe.SourceNodes[0], n, treeChan)
+			rightTrees := dfs(recipe.SourceNodes[1], n, treeChan)
 
-				treeChan <- node
+			localResults := []*TreeNode{}
+			for _, left := range leftTrees {
+				for _, right := range rightTrees {
+					node := &TreeNode{
+						Name:   target.Element.Name,
+						Recipe: []*TreeNode{left, right},
+					}
 
-				results = append(results, node)
-				if len(results) >= int(n) {
-					return results
+					treeChan <- node
+					localResults = append(localResults, node)
+					
+					resultsMutex.Lock()
+					if len(results) >= int(n) {
+						resultsMutex.Unlock()
+						return
+					}
+					resultsMutex.Unlock()
 				}
 			}
-			if len(results) >= int(n) {
-				return results
+
+			resultsMutex.Lock()
+			results = append(results, localResults...)
+			if len(results) > int(n) {
+				results = results[:int(n)]
 			}
-		}
-		if len(results) >= int(n) {
-			return results
-		}
+			resultsMutex.Unlock()
+		}(recipe)
 	}
 
+	wg.Wait()
 	return results
 }
 
@@ -126,7 +140,10 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 	}
 
 	elementToTree := make(map[string][]*TreeNode)
+	var elementToTreeMutex sync.RWMutex
+	
 	processedElements := make(map[string]bool)
+	var processedMutex sync.RWMutex
 
 	currentQueue := []*QueueItem{}
 
@@ -138,99 +155,162 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 	}
 
 	var results []*TreeNode
+	var resultsMutex sync.Mutex
 
 	for len(currentQueue) > 0 {
 		nextQueue := []*QueueItem{}
-		for len(currentQueue) > 0 {
-			current := currentQueue[0]
-			currentQueue = currentQueue[1:]
-
-			if processedElements[current.Element] {
-				continue
-			}
-
-			currentNode, err := elementsModel.GetInstance().GetElementNode(current.Element)
-			if err != nil || currentNode == nil {
-				continue
-			}
-
-			if currentNode.Element.Tier == 0 || len(currentNode.Parents) == 0 {
-				tree := &TreeNode{
-					Name: currentNode.Element.Name,
+		var nextQueueMutex sync.Mutex
+		
+		var wg sync.WaitGroup
+		currentQueueCopy := make([]*QueueItem, len(currentQueue))
+		copy(currentQueueCopy, currentQueue)
+		
+		for _, current := range currentQueueCopy {
+			wg.Add(1)
+			go func(current *QueueItem) {
+				defer wg.Done()
+				
+				processedMutex.RLock()
+				alreadyProcessed := processedElements[current.Element]
+				processedMutex.RUnlock()
+				
+				if alreadyProcessed {
+					return
 				}
-			
-				treeChan <- tree
-			
-				elementToTree[currentNode.Element.Name] = []*TreeNode{tree}
-				processedElements[currentNode.Element.Name] = true
-			}
 
-			allReady := true
-			for _, recipe := range currentNode.Parents {
-				if !processedElements[recipe.Recipe.Ingredients[0]] {
-					nextQueue = append(nextQueue, &QueueItem{Element: recipe.Recipe.Ingredients[0]})
-					allReady = false
+				currentNode, err := elementsModel.GetInstance().GetElementNode(current.Element)
+				if err != nil || currentNode == nil {
+					return
 				}
-				if !processedElements[recipe.Recipe.Ingredients[1]] {
-					nextQueue = append(nextQueue, &QueueItem{Element: recipe.Recipe.Ingredients[1]})
-					allReady = false
+
+				if currentNode.Element.Tier == 0 || len(currentNode.Parents) == 0 {
+					tree := &TreeNode{
+						Name: currentNode.Element.Name,
+					}
+				
+					treeChan <- tree
+				
+					elementToTreeMutex.Lock()
+					elementToTree[currentNode.Element.Name] = []*TreeNode{tree}
+					elementToTreeMutex.Unlock()
+					
+					processedMutex.Lock()
+					processedElements[currentNode.Element.Name] = true
+					processedMutex.Unlock()
+					return
 				}
-			}
 
-			if !allReady {
-				nextQueue = append(nextQueue, current)
-				continue
-			}
-
-			var trees []*TreeNode
-			for _, recipe := range currentNode.Parents {
-				leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
-				rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
-				if leftTrees == nil || rightTrees == nil {
-					continue
-				}
-				for _, left := range leftTrees {
-					for _, right := range rightTrees {
-						node := &TreeNode{
-							Name:   currentNode.Element.Name,
-							Recipe: []*TreeNode{left, right},
-						}
-
-						treeChan <- node
-
-						trees = append(trees, node)
+				allReady := true
+				nextItems := []*QueueItem{}
+				
+				for _, recipe := range currentNode.Parents {
+					processedMutex.RLock()
+					leftProcessed := processedElements[recipe.Recipe.Ingredients[0]]
+					rightProcessed := processedElements[recipe.Recipe.Ingredients[1]]
+					processedMutex.RUnlock()
+					
+					if !leftProcessed {
+						nextItems = append(nextItems, &QueueItem{Element: recipe.Recipe.Ingredients[0]})
+						allReady = false
+					}
+					if !rightProcessed {
+						nextItems = append(nextItems, &QueueItem{Element: recipe.Recipe.Ingredients[1]})
+						allReady = false
 					}
 				}
-			}
-			if len(trees) > 0 {
-				elementToTree[currentNode.Element.Name] = trees
-				processedElements[currentNode.Element.Name] = true
-			}
+
+				if !allReady {
+					nextItems = append(nextItems, current)
+					
+					nextQueueMutex.Lock()
+					nextQueue = append(nextQueue, nextItems...)
+					nextQueueMutex.Unlock()
+					return
+				}
+
+				var trees []*TreeNode
+				for _, recipe := range currentNode.Parents {
+					elementToTreeMutex.RLock()
+					leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
+					rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
+					elementToTreeMutex.RUnlock()
+					
+					if leftTrees == nil || rightTrees == nil {
+						continue
+					}
+					
+					for _, left := range leftTrees {
+						for _, right := range rightTrees {
+							node := &TreeNode{
+								Name:   currentNode.Element.Name,
+								Recipe: []*TreeNode{left, right},
+							}
+
+							treeChan <- node
+							trees = append(trees, node)
+						}
+					}
+				}
+				
+				if len(trees) > 0 {
+					elementToTreeMutex.Lock()
+					elementToTree[currentNode.Element.Name] = trees
+					elementToTreeMutex.Unlock()
+					
+					processedMutex.Lock()
+					processedElements[currentNode.Element.Name] = true
+					processedMutex.Unlock()
+				}
+			}(current)
 		}
+		
+		wg.Wait()
 		currentQueue = nextQueue
 	}
 
+	var targetWg sync.WaitGroup
 	for _, recipe := range target.Parents {
-		leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
-		rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
-		if leftTrees == nil || rightTrees == nil {
-			continue
-		}
+		targetWg.Add(1)
+		go func(recipe *elementsModel.ElementRelation) {
+			defer targetWg.Done()
+			
+			elementToTreeMutex.RLock()
+			leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
+			rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
+			elementToTreeMutex.RUnlock()
+			
+			if leftTrees == nil || rightTrees == nil {
+				return
+			}
 
-		for _, left := range leftTrees {
-			for _, right := range rightTrees {
-				node := &TreeNode{
-					Name:   target.Element.Name,
-					Recipe: []*TreeNode{left, right},
-				}
-				results = append(results, node)
-				if len(results) >= int(n) {
-					return results
+			localResults := []*TreeNode{}
+			for _, left := range leftTrees {
+				for _, right := range rightTrees {
+					node := &TreeNode{
+						Name:   target.Element.Name,
+						Recipe: []*TreeNode{left, right},
+					}
+					localResults = append(localResults, node)
+					
+					resultsMutex.Lock()
+					if len(results) >= int(n) {
+						resultsMutex.Unlock()
+						return
+					}
+					resultsMutex.Unlock()
 				}
 			}
-		}
+			
+			resultsMutex.Lock()
+			results = append(results, localResults...)
+			if len(results) > int(n) {
+				results = results[:int(n)]
+			}
+			resultsMutex.Unlock()
+		}(recipe)
 	}
-
+	
+	targetWg.Wait()
 	return results
 }
 
