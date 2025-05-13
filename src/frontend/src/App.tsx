@@ -11,7 +11,8 @@ type TreeNode = {
 type TreeWebSocketMessage = {
   tree: TreeNode;
   nodesVisited: number;
-  duration?: string;
+  searchDuration?: string;
+  programDuration?: string;
   done: boolean;
 };
 
@@ -26,7 +27,9 @@ function App() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [nodesVisited, setNodesVisited] = useState<number | null>(null);
   const [timeTaken, setTimeTaken] = useState<string | null>(null);
+  const [searchTime, setSearchTime] = useState<string | null>(null);
   const [wsDelay, setWsDelay] = useState(100);
+  const [useMultiThread, setUseMultiThread] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -91,6 +94,7 @@ function App() {
     setRecipeTree(null);
     setNodesVisited(null);
     setTimeTaken(null);
+    setSearchTime(null);
     setNodes([]);
     setEdges([]);
 
@@ -109,6 +113,7 @@ function App() {
           count: count,
           useBfs: method === "bfs",
           delay: wsDelay,
+          useMultiThread: useMultiThread,
         })
       );
     };
@@ -127,8 +132,12 @@ function App() {
             setNodesVisited(data.nodesVisited);
           }
 
-          if (data.duration) {
-            setTimeTaken(`${(parseInt(data.duration) / 1e6).toFixed(2)} ms`);
+          if (data.searchDuration) {
+            setSearchTime(`${(parseInt(data.searchDuration) / 1e6).toFixed(2)} ms`);
+          }
+
+          if (data.programDuration) {
+            setTimeTaken(`${(parseInt(data.programDuration) / 1e6).toFixed(2)} ms`);
           }
 
           if (data.done) {
@@ -143,7 +152,6 @@ function App() {
         }
       }, wsDelay);
     };
-
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setError("WebSocket connection error");
@@ -214,6 +222,9 @@ function App() {
           >
             Find Recipes
           </button>
+          <button onClick={() => setUseMultiThread((prev) => !prev)} className={`p-2 rounded ${useMultiThread ? "bg-green-500 hover:bg-green-600" : "bg-gray-500 hover:bg-gray-600"} text-white`}>
+            {useMultiThread ? "Disable Multithreading" : "Enable Multithreading"}
+          </button>
         </div>
       </div>
 
@@ -225,7 +236,8 @@ function App() {
             <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.Recipe && recipeTree.Recipe[0]?.Name ? recipeTree.Recipe[0].Name : ""}</h2>
             <div className="mb-4">
               <p>Nodes Visited: {nodesVisited}</p>
-              <p>Time Taken: {timeTaken || "0ms"}</p>
+              <p>Search Duration: {searchTime || "0ms"}</p>
+              <p>Program Duration: {timeTaken || "0ms"}</p>
             </div>
             <div style={{ width: "100%", height: "600px", border: "1px solid #ddd" }}>
               <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} defaultViewport={{ x: 0, y: 10, zoom: 0.7 }}>
