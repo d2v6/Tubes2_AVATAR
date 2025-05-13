@@ -66,7 +66,7 @@ func StartBFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, tim
 	return mergeTree(trees), time.Since(start)
 }
 
-func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []*TreeNode {
+func dfs(target *elementsModel.ElementNode, limit int64, treeChan chan *TreeNode) []*TreeNode {
 	if target == nil {
 		return nil
 	}
@@ -86,9 +86,11 @@ func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 		wg.Add(1)
 		go func(recipe *elementsModel.ElementRelation) {
 			defer wg.Done()
-
-			leftTrees := dfs(recipe.SourceNodes[0], n, treeChan)
-			rightTrees := dfs(recipe.SourceNodes[1], n, treeChan)
+			if(len(recipe.SourceNodes)<2){
+				return;
+			}
+			leftTrees := dfs(recipe.SourceNodes[0], limit, treeChan)
+			rightTrees := dfs(recipe.SourceNodes[1], limit, treeChan)
 
 			localResults := []*TreeNode{}
 			for _, left := range leftTrees {
@@ -102,7 +104,7 @@ func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 					localResults = append(localResults, node)
 					
 					resultsMutex.Lock()
-					if len(results) >= int(n) {
+					if len(results) >= int(limit) {
 						resultsMutex.Unlock()
 						return
 					}
@@ -112,8 +114,8 @@ func dfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 
 			resultsMutex.Lock()
 			results = append(results, localResults...)
-			if len(results) > int(n) {
-				results = results[:int(n)]
+			if len(results) > int(limit) {
+				results = results[:int(limit)]
 			}
 			resultsMutex.Unlock()
 		}(recipe)

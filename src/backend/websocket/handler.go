@@ -4,6 +4,7 @@ import (
 	elementsController "backend/controllers"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,67 +24,73 @@ var upgrader = websocket.Upgrader{
 }
 
 func HandleTreeWebSocket(controller *elementsController.ElementController) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Println("WebSocket upgrade error:", err)
-			return
-		}
-		defer conn.Close()
+    return func(w http.ResponseWriter, r *http.Request) {
+        conn, err := upgrader.Upgrade(w, r, nil)
+        if err != nil {
+            log.Println("WebSocket upgrade error:", err)
+            return
+        }
+        defer conn.Close()
 
-		var req struct {
-			Target string `json:"target"`
-			Count  int    `json:"count"`
-			UseBFS bool   `json:"useBfs"`
-			Delay  int    `json:"delay"`
-		}
+        var req struct {
+            Target string `json:"target"`
+            Count  int    `json:"count"`
+            UseBFS bool   `json:"useBfs"`
+            Delay  int    `json:"delay"`
+        }
 
-		if err := conn.ReadJSON(&req); err != nil {
-			log.Println("Failed to read JSON:", err)
-			return
-		}
+        if err := conn.ReadJSON(&req); err != nil {
+            log.Println("Failed to read JSON:", err)
+            return
+        }
 
-		treeChan := make(chan *elementsController.TreeNode, req.Count)
+        treeChan := make(chan *elementsController.TreeNode, req.Count)
 
-		var tree *elementsController.TreeNode
-		var nodesVisited int
-		var duration time.Duration
+        var tree *elementsController.TreeNode
+        var nodesVisited int
+        var duration time.Duration
+		var wg sync.WaitGroup
+		wg.Add(1)
 
-		go func() {
-			if req.UseBFS {
-				tree, duration = elementsController.StartBFS(req.Target, req.Count, treeChan)
-			} else {
-				tree, duration = elementsController.StartDFS(req.Target, req.Count, treeChan)
-			}
-			close(treeChan)
-		}()
+        go func() {
+			defer wg.Done()
+            if req.UseBFS {
+                tree, duration = elementsController.StartBFS(req.Target, req.Count, treeChan)
+            } else {
+                tree, duration = elementsController.StartDFS(req.Target, req.Count, treeChan)
+            }
+            close(treeChan)
+        }()
 
-		var delay time.Duration = time.Duration(req.Delay) * time.Millisecond
-		
-		for intermediateTree := range treeChan {
-			time.Sleep(delay)
+        if req.Delay > 0 {
+            var delay time.Duration = time.Duration(req.Delay) * time.Millisecond
 
-			msg := TreeMessage{
-				Tree:         intermediateTree,
-				NodesVisited: nodesVisited,
-				Done:         false,
-			}
+            for intermediateTree := range treeChan {
+                time.Sleep(delay)
 
-			if err := conn.WriteJSON(msg); err != nil {
-				log.Println("Error sending intermediate result:", err)
-				return
-			}
-		}
+                msg := TreeMessage{
+                    Tree:         intermediateTree,
+                    NodesVisited: nodesVisited,
+                    Done:         false,
+                }
 
-		finalMsg := TreeMessage{
-			Tree:         tree,
-			NodesVisited: nodesVisited,
-			Duration:     duration,
-			Done:         true,
-		}
+                if err := conn.WriteJSON(msg); err != nil {
+                    log.Println("Error sending intermediate result:", err)
+                    return
+                }
+            }
+        }
 
-		if err := conn.WriteJSON(finalMsg); err != nil {
-			log.Println("Error sending final result:", err)
-		}
-	}
+		wg.Wait()
+        finalMsg := TreeMessage{
+            Tree:         tree,
+            NodesVisited: nodesVisited,
+            Duration:     duration,
+            Done:         true,
+        }
+
+        if err := conn.WriteJSON(finalMsg); err != nil {
+            log.Println("Error sending final result:", err)
+        }
+    }
 }
