@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,26 +45,28 @@ func (ec *ElementController) GetAllElementsTiers() (map[string][]string, error) 
 	return tierGroups, nil
 }
 
-func StartDFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, time.Duration) {
+func StartDFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, int64, time.Duration) {
+	atomic.StoreInt64(&NodesVisited, 0)
 	start := time.Now()
 	node, err := elementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
-		return nil, 0
+		return nil, NodesVisited, 0
 	}
 
 	trees := dfs(node, int64(n), treeChan)
-	return mergeTree(trees), time.Since(start)
+	return mergeTree(trees), NodesVisited, time.Since(start)
 }
 
-func StartBFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, time.Duration) {
+func StartBFS(targetName string, n int, treeChan chan *TreeNode) (*TreeNode, int64, time.Duration) {
+	atomic.StoreInt64(&NodesVisited, 0)
 	start := time.Now()
 	node, err := elementsModel.GetInstance().GetElementNode(targetName)
 	if err != nil {
-		return nil, 0
+		return nil, NodesVisited, 0
 	}
 
 	trees := bfs(node, int64(n), treeChan)
-	return mergeTree(trees), time.Since(start)
+	return mergeTree(trees), NodesVisited, time.Since(start)
 }
 
 func dfs(target *elementsModel.ElementNode, limit int64, treeChan chan *TreeNode) []*TreeNode {
@@ -86,9 +89,11 @@ func dfs(target *elementsModel.ElementNode, limit int64, treeChan chan *TreeNode
 		wg.Add(1)
 		go func(recipe *elementsModel.ElementRelation) {
 			defer wg.Done()
-			if(len(recipe.SourceNodes)<2){
-				return;
+			if len(recipe.SourceNodes) < 2 {
+				return
 			}
+
+			atomic.AddInt64(&NodesVisited, 1)
 			leftTrees := dfs(recipe.SourceNodes[0], limit, treeChan)
 			rightTrees := dfs(recipe.SourceNodes[1], limit, treeChan)
 
@@ -102,7 +107,7 @@ func dfs(target *elementsModel.ElementNode, limit int64, treeChan chan *TreeNode
 
 					treeChan <- node
 					localResults = append(localResults, node)
-					
+
 					resultsMutex.Lock()
 					if len(results) >= int(limit) {
 						resultsMutex.Unlock()
@@ -143,7 +148,7 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 
 	elementToTree := make(map[string][]*TreeNode)
 	var elementToTreeMutex sync.RWMutex
-	
+
 	processedElements := make(map[string]bool)
 	var processedMutex sync.RWMutex
 
@@ -162,20 +167,20 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 	for len(currentQueue) > 0 {
 		nextQueue := []*QueueItem{}
 		var nextQueueMutex sync.Mutex
-		
+
 		var wg sync.WaitGroup
 		currentQueueCopy := make([]*QueueItem, len(currentQueue))
 		copy(currentQueueCopy, currentQueue)
-		
+
 		for _, current := range currentQueueCopy {
 			wg.Add(1)
 			go func(current *QueueItem) {
 				defer wg.Done()
-				
+
 				processedMutex.RLock()
 				alreadyProcessed := processedElements[current.Element]
 				processedMutex.RUnlock()
-				
+
 				if alreadyProcessed {
 					return
 				}
@@ -185,17 +190,19 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 					return
 				}
 
+				atomic.AddInt64(&NodesVisited, 1)
+
 				if currentNode.Element.Tier == 0 || len(currentNode.Parents) == 0 {
 					tree := &TreeNode{
 						Name: currentNode.Element.Name,
 					}
-				
+
 					treeChan <- tree
-				
+
 					elementToTreeMutex.Lock()
 					elementToTree[currentNode.Element.Name] = []*TreeNode{tree}
 					elementToTreeMutex.Unlock()
-					
+
 					processedMutex.Lock()
 					processedElements[currentNode.Element.Name] = true
 					processedMutex.Unlock()
@@ -204,13 +211,16 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 
 				allReady := true
 				nextItems := []*QueueItem{}
-				
+
 				for _, recipe := range currentNode.Parents {
+					if len(recipe.SourceNodes) < 2 {
+						continue
+					}
 					processedMutex.RLock()
 					leftProcessed := processedElements[recipe.Recipe.Ingredients[0]]
 					rightProcessed := processedElements[recipe.Recipe.Ingredients[1]]
 					processedMutex.RUnlock()
-					
+
 					if !leftProcessed {
 						nextItems = append(nextItems, &QueueItem{Element: recipe.Recipe.Ingredients[0]})
 						allReady = false
@@ -223,7 +233,7 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 
 				if !allReady {
 					nextItems = append(nextItems, current)
-					
+
 					nextQueueMutex.Lock()
 					nextQueue = append(nextQueue, nextItems...)
 					nextQueueMutex.Unlock()
@@ -236,11 +246,11 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 					leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
 					rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
 					elementToTreeMutex.RUnlock()
-					
+
 					if leftTrees == nil || rightTrees == nil {
 						continue
 					}
-					
+
 					for _, left := range leftTrees {
 						for _, right := range rightTrees {
 							node := &TreeNode{
@@ -253,19 +263,19 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 						}
 					}
 				}
-				
+
 				if len(trees) > 0 {
 					elementToTreeMutex.Lock()
 					elementToTree[currentNode.Element.Name] = trees
 					elementToTreeMutex.Unlock()
-					
+
 					processedMutex.Lock()
 					processedElements[currentNode.Element.Name] = true
 					processedMutex.Unlock()
 				}
 			}(current)
 		}
-		
+
 		wg.Wait()
 		currentQueue = nextQueue
 	}
@@ -275,12 +285,12 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 		targetWg.Add(1)
 		go func(recipe *elementsModel.ElementRelation) {
 			defer targetWg.Done()
-			
+
 			elementToTreeMutex.RLock()
 			leftTrees := elementToTree[recipe.Recipe.Ingredients[0]]
 			rightTrees := elementToTree[recipe.Recipe.Ingredients[1]]
 			elementToTreeMutex.RUnlock()
-			
+
 			if leftTrees == nil || rightTrees == nil {
 				return
 			}
@@ -293,7 +303,7 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 						Recipe: []*TreeNode{left, right},
 					}
 					localResults = append(localResults, node)
-					
+
 					resultsMutex.Lock()
 					if len(results) >= int(n) {
 						resultsMutex.Unlock()
@@ -302,7 +312,7 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 					resultsMutex.Unlock()
 				}
 			}
-			
+
 			resultsMutex.Lock()
 			results = append(results, localResults...)
 			if len(results) > int(n) {
@@ -311,7 +321,7 @@ func bfs(target *elementsModel.ElementNode, n int64, treeChan chan *TreeNode) []
 			resultsMutex.Unlock()
 		}(recipe)
 	}
-	
+
 	targetWg.Wait()
 	return results
 }
