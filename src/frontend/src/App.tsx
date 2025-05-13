@@ -211,6 +211,9 @@ function App() {
             placeholder="WebSocket delay (ms)"
             className="border p-2 rounded w-36"
           />
+          <button onClick={() => setUseMultiThread((prev) => !prev)} className={`p-2 rounded ${useMultiThread ? "bg-green-500 hover:bg-green-600" : "bg-gray-500 hover:bg-gray-600"} text-white`}>
+            {useMultiThread ? "Disable Multithreading" : "Enable Multithreading"}
+          </button>
           <button
             onClick={() => {
               if (!count) setCount(1);
@@ -221,9 +224,6 @@ function App() {
             disabled={loading}
           >
             Find Recipes
-          </button>
-          <button onClick={() => setUseMultiThread((prev) => !prev)} className={`p-2 rounded ${useMultiThread ? "bg-green-500 hover:bg-green-600" : "bg-gray-500 hover:bg-gray-600"} text-white`}>
-            {useMultiThread ? "Disable Multithreading" : "Enable Multithreading"}
           </button>
         </div>
       </div>
