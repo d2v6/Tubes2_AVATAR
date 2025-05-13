@@ -3,14 +3,9 @@ import ReactFlow, { type Node, type Edge, Background, Controls, MiniMap, useNode
 import "reactflow/dist/style.css";
 import "./App.css";
 
-type RecipeInfo = {
-  ingredients: string[];
-};
-
 type TreeNode = {
-  element: string;
-  ingredients: Record<string, TreeNode>;
-  recipes: RecipeInfo[];
+  Name: string;
+  Recipe?: TreeNode[];
 };
 
 type TreeWebSocketMessage = {
@@ -38,22 +33,22 @@ function App() {
   const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
 
   const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
-    const nodeId = `${treeNode.element}-${depth}-${xOffset}`;
+    const nodeId = `${treeNode.Name}-${depth}-${xOffset}`;
     const nodeSpacingX = 200;
     const nodeSpacingY = 100;
 
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
-    const childKeys = Object.keys(treeNode.ingredients || {});
     const childResults: { nodes: Node[]; edges: Edge[]; width: number }[] = [];
 
     let totalChildWidth = 0;
-    for (const key of childKeys) {
-      const child = treeNode.ingredients[key];
-      const result = convertToReactFlowFormat(child, nodeId, depth + 1, xOffset + totalChildWidth);
-      childResults.push(result);
-      totalChildWidth += result.width;
+    if (treeNode.Recipe) {
+      for (const child of treeNode.Recipe) {
+        const result = convertToReactFlowFormat(child, nodeId, depth + 1, xOffset + totalChildWidth);
+        childResults.push(result);
+        totalChildWidth += result.width;
+      }
     }
 
     if (totalChildWidth === 0) {
@@ -64,7 +59,7 @@ function App() {
 
     nodes.push({
       id: nodeId,
-      data: { label: treeNode.element },
+      data: { label: treeNode.Name },
       position: {
         x: centerX * nodeSpacingX,
         y: depth * nodeSpacingY,
@@ -94,6 +89,7 @@ function App() {
     setLoading(true);
     setError(null);
     setRecipeTree(null);
+    setTimeTaken(null);
     setNodes([]);
     setEdges([]);
 
@@ -226,7 +222,7 @@ function App() {
         {!error && !recipeTree && <p className="p-4 text-center">No recipes found for "{target}"</p>}
         {recipeTree && (
           <div className="p-4">
-            <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.element}</h2>
+            <h2 className="text-xl font-bold mb-4">Recipe Tree for {recipeTree.Recipe && recipeTree.Recipe[0]?.Name ? recipeTree.Recipe[0].Name : ""}</h2>
             <div className="mb-4">
               <p>Nodes Visited: {nodesVisited}</p>
               <p>Time Taken: {timeTaken}</p>
