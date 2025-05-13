@@ -10,13 +10,12 @@ function TierList() {
   const [error, setError] = useState<string | null>(null);
   const [tierData, setTierData] = useState<TierListData | null>(null);
 
-  const url = window.location.hostname === "localhost" ? "http://localhost:4003" : `${window.location.host}`;
-
   useEffect(() => {
     const fetchTierList = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${url}/api/tiers`);
+        // const response = await fetch(`https://localhost:4003/api/tiers`); //for local
+        const response = await fetch(`/api/tiers`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch tier list: ${response.status}`);

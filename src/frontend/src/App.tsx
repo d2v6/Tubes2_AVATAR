@@ -40,7 +40,6 @@ function App() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
-  const url = window.location.hostname === "localhost" ? "http://localhost:4003" : `${window.location.host}`;
 
   const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
     const nodeId = `${treeNode.Name}-${depth}-${xOffset}`;
@@ -106,7 +105,8 @@ function App() {
     setEdges([]);
 
     try {
-      const response = await fetch(`${url}/api/elements/${target}`);
+      // const response = await fetch(`https://localhost:4003/api/elements/${target}`); //for local
+      const response = await fetch(`/api/elements/${target}`);
       if (!response.ok) {
         throw new Error("Failed to fetch target element");
       }
