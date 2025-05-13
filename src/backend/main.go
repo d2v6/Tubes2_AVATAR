@@ -17,8 +17,8 @@ func main() {
         log.Fatalf("Cannot get working directory: %v", err)
     }
 
-	// filepath:=filepath.Join(cwd, "src","backend","data", "elements.json") // for docker
-	filepath:=filepath.Join(cwd, "data", "elements.json")
+	filepath:=filepath.Join(cwd, "src","backend","data", "elements.json") // for docker
+	// filepath:=filepath.Join(cwd, "data", "elements.json")
 
 	log.Println("Scraping data...")
 	scraper.Scrape(filepath)
