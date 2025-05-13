@@ -1,0 +1,10 @@
+services:
+  avatar-tubes2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "4003:4003"
+    volumes:
+      - ./src/backend/data:/app/src/backend/data
+    restart: unless-stopped
