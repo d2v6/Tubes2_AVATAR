@@ -39,7 +39,7 @@ function App() {
 
   const wsRef = useRef<WebSocket | null>(null);
 
-  const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
+  // const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
 
   const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
     const nodeId = `${treeNode.Name}-${depth}-${xOffset}`;
