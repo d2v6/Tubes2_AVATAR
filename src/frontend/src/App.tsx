@@ -105,8 +105,8 @@ function App() {
     setEdges([]);
 
     try {
-      // const response = await fetch(`https://localhost:4003/api/elements/${target}`); //for local
-      const response = await fetch(`/api/elements/${target}`);
+      const response = await fetch(`http://localhost:4003/api/elements/${target}`); //for local
+      // const response = await fetch(`/api/elements/${target}`);
       if (!response.ok) {
         throw new Error("Failed to fetch target element");
       }
