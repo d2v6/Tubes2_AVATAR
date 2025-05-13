@@ -549,13 +549,11 @@ func PrintRecipeTree(tree *TreeNode, prefix string, isLast bool) {
 
 	fmt.Printf("%s%s%s", prefix, connector, tree.Name)
 
-	// Print the recipe if there are exactly 2 ingredients (left and right)
 	if len(tree.Recipe) == 2 {
 		fmt.Printf(" = %s + %s", tree.Recipe[0].Name, tree.Recipe[1].Name)
 	}
 	fmt.Println()
 
-	// Update the prefix for the next level of the tree
 	newPrefix := prefix
 	if isLast {
 		newPrefix += "    "
@@ -566,4 +564,12 @@ func PrintRecipeTree(tree *TreeNode, prefix string, isLast bool) {
 	for i, child := range tree.Recipe {
 		PrintRecipeTree(child, newPrefix, i == len(tree.Recipe)-1)
 	}
+}
+
+func (ec *ElementController) GetElementByName(name string) (*elementsModel.Element, error) {
+    element, err := elementsModel.GetInstance().GetElementByName(name)
+    if err != nil {
+        return nil, fmt.Errorf("element with name '%s' not found: %v", name, err)
+    }
+    return element, nil
 }

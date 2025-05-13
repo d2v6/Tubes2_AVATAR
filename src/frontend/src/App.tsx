@@ -16,6 +16,12 @@ type TreeWebSocketMessage = {
   done: boolean;
 };
 
+type Element = {
+  name: string;
+  tier: number;
+  recipes: { ingredients: string[] }[];
+};
+
 function App() {
   const [recipeTree, setRecipeTree] = useState<TreeNode | null>(null);
   const [loading, setLoading] = useState(false);
@@ -34,6 +40,7 @@ function App() {
   const wsRef = useRef<WebSocket | null>(null);
 
   const wsUrl = window.location.hostname === "localhost" ? "ws://localhost:4003" : `ws://${window.location.host}`;
+  const url = window.location.hostname === "localhost" ? "http://localhost:4003" : `${window.location.host}`;
 
   const convertToReactFlowFormat = useCallback((treeNode: TreeNode, parentId?: string, depth = 0, xOffset = 0): { nodes: Node[]; edges: Edge[]; width: number } => {
     const nodeId = `${treeNode.Name}-${depth}-${xOffset}`;
@@ -88,7 +95,7 @@ function App() {
     return { nodes, edges, width: totalChildWidth };
   }, []);
 
-  const fetchRecipes = () => {
+  const fetchRecipes = async () => {
     setLoading(true);
     setError(null);
     setRecipeTree(null);
@@ -98,11 +105,30 @@ function App() {
     setNodes([]);
     setEdges([]);
 
+    try {
+      const response = await fetch(`${url}/api/elements/${target}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch target element");
+      }
+      const targetElement: Element = await response.json();
+
+      if (method === "bfs" && targetElement.tier > 5 && window.location.hostname !== "localhost") {
+        setError("Error: BFS is not allowed for elements with a tier above 5.");
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      console.error("Error fetching target element:", err);
+      setError("Failed to find element.");
+      setLoading(false);
+      return;
+    }
+
     if (wsRef.current) {
       wsRef.current.close();
     }
 
-    const ws = new WebSocket(`${wsUrl}/ws/tree`);
+    const ws = new WebSocket(`${wsUrl.replace("http", "ws")}/ws/tree`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -152,6 +178,7 @@ function App() {
         }
       }, wsDelay);
     };
+
     ws.onerror = (error) => {
       console.error("WebSocket error:", error);
       setError("WebSocket connection error");

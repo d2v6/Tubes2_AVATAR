@@ -10,11 +10,13 @@ function TierList() {
   const [error, setError] = useState<string | null>(null);
   const [tierData, setTierData] = useState<TierListData | null>(null);
 
+  const url = window.location.hostname === "localhost" ? "http://localhost:4003" : `${window.location.host}`;
+
   useEffect(() => {
     const fetchTierList = async () => {
       try {
         setLoading(true);
-        const response = await fetch("http://localhost:4003/api/tiers");
+        const response = await fetch(`${url}/api/tiers`);
 
         if (!response.ok) {
           throw new Error(`Failed to fetch tier list: ${response.status}`);
@@ -30,26 +32,27 @@ function TierList() {
     };
 
     fetchTierList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getTierColor = (tierNum: number): string => {
     const colors = [
-    "#44bd32", 
-    "#0097e6", 
-    "#8e44ad", 
-    "#e1b12c", 
-    "#e67e22", // 
-    "#d35400", // 
-    "#c23616", // 
-    "#e84118", // 
-    "#273c75", // 
-    "#574b90", // 
-    "#786fa6", // 
-    "#f368e0", // 
-    "#ff9ff3", //  
-    "#341f97", //  
-    "#5f27cd", //  
-    "#222f3e"  //
+      "#44bd32",
+      "#0097e6",
+      "#8e44ad",
+      "#e1b12c",
+      "#e67e22", //
+      "#d35400", //
+      "#c23616", //
+      "#e84118", //
+      "#273c75", //
+      "#574b90", //
+      "#786fa6", //
+      "#f368e0", //
+      "#ff9ff3", //
+      "#341f97", //
+      "#5f27cd", //
+      "#222f3e", //
     ];
     return tierNum < colors.length ? colors[tierNum] : "#000";
   };
@@ -76,10 +79,7 @@ function TierList() {
               </div>
               <div className="p-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
                 {tierData.elements[tier.toString()]?.map((element) => (
-                  <div
-                    key={element}
-                    className="px-3 py-1 text-sm font-medium bg-gray-100 border border-gray-300 rounded-full text-center hover:bg-gray-200 transition duration-150"
-                  >
+                  <div key={element} className="px-3 py-1 text-sm font-medium bg-gray-100 border border-gray-300 rounded-full text-center hover:bg-gray-200 transition duration-150">
                     {element}
                   </div>
                 ))}

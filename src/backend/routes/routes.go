@@ -32,6 +32,7 @@ func InitRoutes() http.Handler {
 
     r.Route("/api", func(r chi.Router) {
         r.Get("/tiers", handleGetAllElementsTiers)
+        r.Get("/elements/{name}", handleGetElementByName(controller))
     })
 
     r.Get("/ws/tree", websocket.HandleTreeWebSocket(controller))
@@ -40,6 +41,25 @@ func InitRoutes() http.Handler {
     r.Handle("/*", fs)
 
     return r
+}
+
+func handleGetElementByName(controller *elementsController.ElementController) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        name := chi.URLParam(r, "name")
+        if name == "" {
+            http.Error(w, "element name is required", http.StatusBadRequest)
+            return
+        }
+
+        element, err := controller.GetElementByName(name)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusNotFound)
+            return
+        }
+
+        w.Header().Set("Content-Type", "application/json")
+        json.NewEncoder(w).Encode(element)
+    }
 }
 
 func handleGetAllElementsTiers(w http.ResponseWriter, r *http.Request) {
